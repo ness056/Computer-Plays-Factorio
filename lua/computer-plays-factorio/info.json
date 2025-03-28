@@ -1,0 +1,9 @@
+{
+    "name": "computer-plays-factorio",
+    "version": "0.0.0",
+    "title": "computer-plays-factorio",
+    "author": "ness056",
+    "homepage": "https://github.com/ness056/Computer-Plays-Factorio",
+    "factorio_version": "2.0",
+    "dependencies": ["base >= 2.0"]
+}
