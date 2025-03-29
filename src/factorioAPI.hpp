@@ -13,6 +13,12 @@
 #include <WS2tcpip.h>
 #include <Windows.h>
 #pragma comment(lib, "WS2_32")
+#elif defined(__linux__)
+#include <signal.h>
+#include <spawn.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #else
 #error "Only Windows is supported for now"
 #endif
@@ -154,6 +160,12 @@ private:
     HANDLE fstdinWrite;
     HANDLE fstdoutRead;
     HANDLE fstdoutEvent;
+#elif defined(__linux__)
+    pid_t process;
+    int returnStatus;
+
+    int fstdinWrite;
+    int fstdoutRead;
 #else
 #error "Only Windows is supported for now"
 #endif
@@ -161,7 +173,6 @@ private:
 
     void Clean();
     void StdoutListener();
-    bool cleaned = true;
 
     void StartRCON();
     void CloseRCON();

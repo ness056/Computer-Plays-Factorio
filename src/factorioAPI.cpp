@@ -11,7 +11,9 @@ bool FactorioInstance::initStatic = false;
 std::string FactorioInstance::factorioPath = "C:\\Users\\louis\\Code Projects\\Computer-Plays-Factorio\\factorio\\bin\\x64\\factorio.exe";
 std::string FactorioInstance::luaPath = "..\\lua";
 
+#ifdef _WIN32
 HANDLE FactorioInstance::jobObject = nullptr;
+#endif
 
 void FactorioInstance::InitStatic() {
     assert(!initStatic && "FactorioInstance::InitStatic was already been called.");
@@ -38,8 +40,6 @@ void FactorioInstance::InitStatic() {
         std::cerr << "WSAStartup: " << r << std::endl;
         exit(1);
     }
-#else
-#error "Only Windows is supported for now"
 #endif
 
     initStatic = true;
@@ -96,6 +96,14 @@ FactorioInstance::FactorioInstance(const std::string &n, bool g) : name(n), grap
     fstdoutRead = rd;
     startupInfo.hStdOutput = wr;
     startupInfo.hStdError = wr;
+#elif defined(__linux__)
+    int stdinfd[2];
+    int stdoutfd[2];
+
+    if (pipe(stdinfd) != 0 || pipe(stdoutfd) != 0) {
+        std::cerr << "pipe" << std::endl;
+        exit(1);
+    }
 #else
 #error "Only Windows is supported for now"
 #endif
@@ -103,7 +111,8 @@ FactorioInstance::FactorioInstance(const std::string &n, bool g) : name(n), grap
 
 FactorioInstance::~FactorioInstance() {
     Close();
-    Join();     // Clean
+    Join();
+    Clean();
 }
 
 bool FactorioInstance::Running() {
@@ -161,7 +170,6 @@ bool FactorioInstance::Start(const std::function<void(FactorioInstance&)> &callb
     fstdoutListener = std::thread(&FactorioInstance::StdoutListener, this);
     fstdoutListener.detach();
 
-    cleaned = false;
     return true;
 }
 
@@ -194,7 +202,6 @@ bool FactorioInstance::Join(int *exitCode) {
 #error "Only Windows is supported for now"
 #endif
 
-    Clean();
     return true;
 }
 
@@ -254,8 +261,6 @@ bool FactorioInstance::SendRCON(const std::string &data, RCONPacketType type) {
 }
 
 void FactorioInstance::Clean() {
-    std::unique_lock<std::mutex> lock(mutex);
-    if (cleaned == true) return;
     CloseRCON();
 #ifdef _WIN32
     CloseHandle(startupInfo.hStdInput);
@@ -269,7 +274,6 @@ void FactorioInstance::Clean() {
 #error "Only Windows is supported for now"
 #endif
     fstdoutListener.join();
-    cleaned = true;
 }
 
 void FactorioInstance::StdoutListener() {
