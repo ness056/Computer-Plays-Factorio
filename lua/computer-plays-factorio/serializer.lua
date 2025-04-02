@@ -7,29 +7,29 @@ RequestName = {
     test_request_name = 0
 }
 
+---@class CppType
+---@field type string
+---@field arraySize int?
+---@field template CppType[]?
+
 ---@class CppFieldDescriptor
 ---@field name string
----@field type string
----@field arraySize int? -- if field is an array of type, otherwise nil
----@field template string[]?
+---@field type CppType
 
----@type { [string]: { fields: CppFieldDescriptor[], template: string[]? } }
+---@type { [string]: CppFieldDescriptor[]}
 Serializer.classes = {
     ["Request"] = {
-        template = {"T"},
-        fields = {
-            {
-                name = "id",
-                type = "uint32"
-            },
-            {
-                name = "name",
-                type = "uint8"
-            },
-            {
-                name = "data",
-                type = "T"
-            }
+        {
+            name = "id",
+            type = { type = "uint32" }
+        },
+        {
+            name = "name",
+            type = { type = "uint8" }
+        },
+        {
+            name = "data",
+            type = { type = "1" }
         }
     }
 }
@@ -47,7 +47,7 @@ end
 ---@param i int
 ---@param type string
 ---@param arraySize int?
----@param template string[]?
+---@param template CppType[]?
 ---@return T, int
 function Serializer.Deserialize(data, i, type, arraySize, template)
     assert(type and string.len(type) > 0 and data and i)

@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <string>
 #include <vector>
+#include <map>
 #include <tuple>
 #include <cstring>
 #include <cstdint>
@@ -27,8 +28,17 @@ void Serialize(const std::string &data, std::string &out);
 template<class T>
 void Serialize(const std::vector<T> &data, std::string &out) {
     Serialize(data.size(), out);
-    for (auto &e : data) {
+    for (auto const &e : data) {
         Serialize(e, out);
+    }
+}
+
+template<class K, class T>
+void Serialize(const std::map<K, T> &data, std::string &out) {
+    Serialize(data.size(), out);
+    for (auto const &[k, v] : data) {
+        Serialize(k, out);
+        Serialize(v, out);
     }
 }
 
@@ -54,10 +64,25 @@ template<class T>
 bool Deserialize(const std::string &data, size_t &i, std::vector<T> &out) {
     size_t size;
     if (!Deserialize(data, i, size)) return false;
+    out.clear();
     out.reserve(size * sizeof(T));
     for (size_t i = 0; i < size; i++) {
         if (!Deserialize(data, i, out[i])) return false;
     }
+}
+
+template<class K, class T>
+bool Deserialize(const std::string &data, size_t &i, std::map<K, T> &out) {
+    size_t size;
+    if (!Deserialize(data, i, size)) return false;
+    out.clear();
+    for (size_t i = 0; i < size; i++) {
+        K k; T v;
+        if (!Deserialize(data, i, k)) return false;
+        if (!Deserialize(data, i, v)) return false;
+        out[k] = v;
+    }
+    return true;
 }
 
 template<class Class, class T>
