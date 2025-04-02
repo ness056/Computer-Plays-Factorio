@@ -105,7 +105,7 @@ FactorioInstance::FactorioInstance(const std::string &n, bool g) : name(n), grap
         exit(1);
     }
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
 }
 
@@ -121,7 +121,7 @@ bool FactorioInstance::Running() {
     GetExitCodeProcess(processInfo.hProcess, &exitCode);
     return exitCode == STILL_ACTIVE;
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
 }
 
@@ -164,7 +164,7 @@ bool FactorioInstance::Start(const std::function<void(FactorioInstance&)> &callb
         exit(1);
     }
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
 
     fstdoutListener = std::thread(&FactorioInstance::StdoutListener, this);
@@ -183,7 +183,7 @@ bool FactorioInstance::Close() {
         exit(1);
     }
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
 
     return true;
@@ -199,7 +199,7 @@ bool FactorioInstance::Join(int *exitCode) {
         }
     }
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
 
     return true;
@@ -214,7 +214,7 @@ bool FactorioInstance::WriteStdin(const std::string &data, int &writtenBytes) {
     writtenBytes = (int)wb;
     return true;
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
 }
 
@@ -271,7 +271,7 @@ void FactorioInstance::Clean() {
     CloseHandle(fstdoutRead);
     CloseHandle(fstdoutEvent);
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
     fstdoutListener.join();
 }

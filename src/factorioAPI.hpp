@@ -20,7 +20,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
 
 #include "serializer.hpp"
@@ -167,7 +167,7 @@ private:
     int fstdinWrite;
     int fstdoutRead;
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
     std::thread fstdoutListener;
 
@@ -184,7 +184,7 @@ private:
 #ifdef _WIN32
     SOCKET rconSocket = INVALID_SOCKET;
 #else
-#error "Only Windows is supported for now"
+#error "Only Windows and Linux are supported for now"
 #endif
 };
 }

@@ -12,25 +12,12 @@ RequestName = {
 ---@field arraySize int?
 ---@field template CppType[]?
 
----@class CppFieldDescriptor
----@field name string
----@field type CppType
-
----@type { [string]: CppFieldDescriptor[]}
+---@type { [string]: { [string]: (CppType | string) }}
 Serializer.classes = {
     ["Request"] = {
-        {
-            name = "id",
-            type = { type = "uint32" }
-        },
-        {
-            name = "name",
-            type = { type = "uint8" }
-        },
-        {
-            name = "data",
-            type = { type = "1" }
-        }
+        ["id"] = "u32",
+        ["name"] = "u8",
+        ["data"] = "1"
     }
 }
 
@@ -69,6 +56,10 @@ function Serializer.Deserialize(data, i, type, arraySize, template)
             i = j
         end
         return r, i
+    end
+
+    if type == "map" then
+
     end
 
     if type == "string" then

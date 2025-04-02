@@ -9,6 +9,56 @@
 #include <cstring>
 #include <cstdint>
 
+/**
+ * Used to serialize data sent between C++ and Factorio.
+ * 
+ * Supports all numeric values, enums, strings, C arrays, vectors and maps.
+ * Custom classes can also be serialize if they have a public member called
+ *  properties that specifies what members are to be included in the serialization.
+ * Does not support pointers.
+ * 
+ * Example:
+ * 
+ *  using namespace ComputerPlaysFactorio;
+ *
+ *  template<T>
+ *  struct Test {
+ *      // included in the serialization
+ *      int32_t a;
+ *      bool b;
+ *      MyEnum c;
+ *      unsigned short d[40];
+ *      std::string e;
+ *      std::vector<T> f;
+ *      std::map<std::string, uint64_t> g;
+ * 
+ *      // not included in the serialization
+ *      uint8_t h;
+ *      bool i;
+ *      std::string j;
+ *  
+ *      constexpr static auto properties = MakeSerializerProperties(
+ *          &Test<T>::a, &Test<T>::b, &Test<T>::c, &Test<T>::d,
+ *          &Test<T>::e, &Test<T>::f, &Test<T>::g
+ *      );
+ *  };
+ * 
+ *  int main() {
+ *      Test<std::string> data;
+ *      std::string serialize;
+ *      Serialize(data, serialize);
+ *  
+ *      Test<std::string> deserialize;
+ *      size_t i = 0; // The index of the begining of the data in the string
+ *      bool success = Deserialize(serialize, i, deserialize);
+ *      // i is now the index of the end of the data in the string.
+ *      // If the string data was invalid, some members of deserialize may become
+ *      // filled with trash stuff.
+ * 
+ *      return 0;
+ *  }
+ */
+
 namespace ComputerPlaysFactorio {
 
 template<class T> requires std::is_arithmetic_v<T> || std::is_enum_v<T>
