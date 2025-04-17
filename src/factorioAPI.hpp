@@ -35,13 +35,13 @@
  *   used in some situations but Factorio only allows to respond to a rcon request in the same
  *   game tick as it was received, which is really impractical.
  * 
- * - All data send from and to C++ or Factorio is serialized into JSON.
+ * - All data send from and to C++ or Factorio is serialized using serializer.hpp or serializer.lua
  * 
  * - C++ can send request to Factorio using the "/request Request<DataType>" command. Factorio can
- *   respond with "response Response<DataType>". The id fields in Request and Response should be the
+ *   respond with "response[size]:Response<DataType>". The id fields in Request and Response should be the
  *   same.
  * 
- * - Factorio can send events to C++ by sending "event Event<DataType>". C++ cannot respond to events.
+ * - Factorio can send events to C++ by sending "event[size]:Event<DataType>". C++ cannot respond to events.
  */
 
 namespace ComputerPlaysFactorio {

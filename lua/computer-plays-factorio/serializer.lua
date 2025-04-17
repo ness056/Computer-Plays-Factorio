@@ -12,12 +12,12 @@ RequestName = {
 ---@field arraySize int?
 ---@field template CppType[]?
 
----@type { [string]: { [string]: (CppType | string) }}
+---@type { [string]: { [string]: (CppType | string | int) }}
 Serializer.classes = {
     ["Request"] = {
         ["id"] = "u32",
         ["name"] = "u8",
-        ["data"] = "1"
+        ["data"] = 1
     }
 }
 
@@ -75,8 +75,7 @@ function Serializer.Deserialize(data, i, type, arraySize, template)
 
     numberType = nil
     numberSize = nil
-    if type[1] == "u" then numberType = "u"
-    elseif type[1] == "i" then numberType = "i" end
+    if type[1] == "u" or type[1] == "i" then numberType = type[1] end
 
     local s = string.sub(type, 2)
     if s == "8" then numberSize = 1
@@ -101,6 +100,8 @@ function Serializer.Deserialize(data, i, type, arraySize, template)
 
         return n, i + numberSize
     end
+
+    return false, i
 end
 
 return Serializer

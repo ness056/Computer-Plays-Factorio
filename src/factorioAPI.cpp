@@ -110,9 +110,11 @@ FactorioInstance::FactorioInstance(const std::string &n, bool g) : name(n), grap
 }
 
 FactorioInstance::~FactorioInstance() {
+    std::unique_lock<std::mutex> lock(mutex);
     Close();
     Join();
     Clean();
+    fstdoutListener.join();
 }
 
 bool FactorioInstance::Running() {
@@ -186,6 +188,7 @@ bool FactorioInstance::Close() {
 #error "Only Windows and Linux are supported for now"
 #endif
 
+    fstdoutListener.join();
     return true;
 }
 
@@ -222,7 +225,7 @@ bool FactorioInstance::SendRCON(const std::string &data, RCONPacketType type) {
     std::cout << "send " << data << std::endl;
     if (!rconConnected && type != RCON_AUTH) return false;
 
-    static int32_t index = 1;
+    static int32_t index = 0;
     int32_t id = index++;
 
     size_t dataSize = data.size();
@@ -273,7 +276,6 @@ void FactorioInstance::Clean() {
 #else
 #error "Only Windows and Linux are supported for now"
 #endif
-    fstdoutListener.join();
 }
 
 void FactorioInstance::StdoutListener() {
@@ -348,6 +350,8 @@ void FactorioInstance::CloseRCON() {
     if (!rconConnected) return;
 
     closesocket(rconSocket);
+
+    rconConnected = false;
 }
 
 bool FactorioInstance::ReadPacket(int32_t &id, int32_t &type, char body[4096]) {
@@ -356,9 +360,9 @@ bool FactorioInstance::ReadPacket(int32_t &id, int32_t &type, char body[4096]) {
     if (recv(rconSocket, (char*)&responseSize, 4, 0) == -1) return false;
     if (responseSize < 10) return false;
 
-    if (recv(rconSocket, (char*)&id,   4,                0) == -1) return false;
-    if (recv(rconSocket, (char*)&type, 4,                0) == -1) return false;
-    if (recv(rconSocket, body,         responseSize - 2, 0) == -1) return false;
+    if (recv(rconSocket, (char*)&  id,                4, 0) == -1) return false;
+    if (recv(rconSocket, (char*)&type,                4, 0) == -1) return false;
+    if (recv(rconSocket,         body, responseSize - 2, 0) == -1) return false;
 
     return true;
 }

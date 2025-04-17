@@ -14,9 +14,9 @@ add_executable(${PROJECT_NAME}
 set_property(TARGET computer_plays_factorio PROPERTY CXX_STANDARD 20)
 
 if(MSVC)
-  target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
 else()
-  target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
 add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD

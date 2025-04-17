@@ -9,6 +9,8 @@
 #include <cstring>
 #include <cstdint>
 
+#include <iostream>
+
 /**
  * Used to serialize data sent between C++ and Factorio.
  * 
@@ -21,7 +23,7 @@
  * 
  *  using namespace ComputerPlaysFactorio;
  *
- *  template<T>
+ *  template<class T>
  *  struct Test {
  *      // included in the serialization
  *      int32_t a;
@@ -61,13 +63,13 @@
 
 namespace ComputerPlaysFactorio {
 
-template<class T> requires std::is_arithmetic_v<T> || std::is_enum_v<T>
+template<class T> requires (std::is_arithmetic_v<T> || std::is_enum_v<T>)
 void Serialize(const T &data, std::string &out) {
     const char *p = reinterpret_cast<const char*>(&data);
     out.append(p, sizeof(data));
 }
 
-template<class T> requires std::is_bounded_array_v<T>
+template<class T> requires (std::is_bounded_array_v<T>)
 void Serialize(const T &data, std::string &out) {
     const char *p = reinterpret_cast<const char*>(data);
     out.append(p, sizeof(data));
@@ -92,7 +94,7 @@ void Serialize(const std::map<K, T> &data, std::string &out) {
     }
 }
 
-template<class T> requires std::is_arithmetic_v<T> || std::is_enum_v<T>
+template<class T> requires (std::is_arithmetic_v<T> || std::is_enum_v<T>)
 bool Deserialize(const std::string &data, size_t &i, T &out) {
     if (data.size() - i < sizeof(out)) return false;
     out = *reinterpret_cast<const T*>(&data[i]);
@@ -100,7 +102,7 @@ bool Deserialize(const std::string &data, size_t &i, T &out) {
     return true;
 }
 
-template<class T> requires std::is_bounded_array_v<T>
+template<class T> requires (std::is_bounded_array_v<T>)
 bool Deserialize(const std::string &data, size_t &i, T &out) {
     if (data.size() - i < sizeof(out)) return false;
     std::memcpy(out, &data[i], sizeof(out));
@@ -114,11 +116,11 @@ template<class T>
 bool Deserialize(const std::string &data, size_t &i, std::vector<T> &out) {
     size_t size;
     if (!Deserialize(data, i, size)) return false;
-    out.clear();
-    out.reserve(size * sizeof(T));
-    for (size_t i = 0; i < size; i++) {
-        if (!Deserialize(data, i, out[i])) return false;
+    out.resize(size);
+    for (size_t j = 0; j < size; j++) {
+        if (!Deserialize(data, i, out[j])) return false;
     }
+    return true;
 }
 
 template<class K, class T>
@@ -126,7 +128,7 @@ bool Deserialize(const std::string &data, size_t &i, std::map<K, T> &out) {
     size_t size;
     if (!Deserialize(data, i, size)) return false;
     out.clear();
-    for (size_t i = 0; i < size; i++) {
+    for (size_t j = 0; j < size; j++) {
         K k; T v;
         if (!Deserialize(data, i, k)) return false;
         if (!Deserialize(data, i, v)) return false;
