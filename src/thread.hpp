@@ -20,12 +20,12 @@ public:
 private:
     static void ThreadLoop();
 
-    static bool stop;
-    static std::mutex queueMutex;
-    static std::condition_variable mutexCond;
-    static std::vector<std::thread> threads;
-    static int workingThread;
-    static std::condition_variable workingCond;
-    static std::queue<std::function<void()>> jobs;
+    static bool s_stop;
+    static std::mutex s_queueMutex;
+    static std::condition_variable s_mutexCond;
+    static std::vector<std::thread> s_threads;
+    static int s_workingThread;
+    static std::condition_variable s_workingCond;
+    static std::queue<std::function<void()>> s_jobs;
 };
 }

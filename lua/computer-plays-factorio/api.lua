@@ -4,15 +4,17 @@ local Serializer = require("serializer")
 local API = {}
 
 ---@class RequestHandler
----@field fn fun(request: Request)
----@field dataType string
----@field responseType string
+---@field fn fun(request: Request<any>)
+---@field dataType CppType | string
+---@field responseType CppType | string
 
 ---@type table<int, RequestHandler>
 local requestHandlers = {}
 
 ---@param requestName int
----@param handler fun(request: Request)
+---@param handler fun(request: Request<any>)
+---@param dataType CppType | string
+---@param responseType CppType | string
 function API.AddRequestHandler(requestName, handler, dataType, responseType)
     assert(requestName, handler)
     if game or data then error("You can only register request handlers during the control life cycle") end
@@ -31,22 +33,20 @@ end
 ---@param requestName int
 ---@return RequestHandler
 function API.GetRequestHandler(requestName)
-    return assert(requestName and requestHandlers[requestName], "No handler for the request name " .. requestName .. " has been registered")
+    return assert(requestName and requestHandlers[requestName], "No handler for the request name " .. (requestName and requestName or "nil") .. " has been registered")
 end
 
----@class Request<T, R> : { id: int, name: RequestName, data: T, responseType: string, Response: fun(self:Request<T, R>, data:R)}
+---@alias Request<T> { id: int, name: RequestName, data: T, responseType: CppType | string }
 
----@generic T, R
----@param request Request<T, R>
----@param data R
+---@generic T
+---@param request Request<T>
+---@param data any
 function API.Respond(request, data)
-    TypeCheck(data, self.responseType)
-    d = helpers.table_to_json(data)
-
-    r = { id = self.id, data = d}
+    print("API.Respond TODO")
 end
 
 commands.add_command("request", nil, function (data)
+    print("testtest")
     if data.player_index ~= nil then
         game.get_player(data.player_index).print("You cannot use this command")
         return
@@ -54,16 +54,20 @@ commands.add_command("request", nil, function (data)
 
     if data.parameter == nil then return end
 
-    local d = helpers.json_to_table(data.parameter)
-    if not d then
-        error("JSON could not be parsed into table: " .. data.parameter)
+    local d = Serializer.Deserialize(data.parameter or "", 0, { name = "Request", template = {""}})
+    for k, v in pairs(d) do
+        print(k, v)
     end
-
-    TypeCheck(d) -- name
+    print(d.name)
     local handler = API.GetRequestHandler(d.name)
 
-    TypeCheck(d, handler.dataType)
-    handler.fn(Request.new(d.id, d.type, d.data))
+    d = Serializer.Deserialize(data.parameter, 0, {name = "Request", template = {handler.dataType}})
+    handler.fn({
+        id = d.id,
+        name = d.name,
+        responseType = handler.responseType,
+        data = d.data
+    } --[[@as Request<any>]])
 end)
 
 function API.InvokeEvent()
