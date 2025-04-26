@@ -1,19 +1,21 @@
 #include "factorioAPI.hpp"
 
+#include <algorithm>
 #include <format>
 #include <cassert>
 #include <cstring>
 
 #include "thread.hpp"
 
+#ifdef __linux__
 extern char **environ;
+#endif
 
 namespace ComputerPlaysFactorio {
 
 bool FactorioInstance::s_initStatic = false;
 
-// std::string FactorioInstance::factorioPath = "C:\\Users\\louis\\Code Projects\\Computer-Plays-Factorio\\factorio\\bin\\x64\\factorio.exe";
-std::string FactorioInstance::s_factorioPath = "/home/ness056/CodeProjets/computer-plays-factorio/factorio/bin/x64/factorio";
+std::string FactorioInstance::s_factorioPath = "C:\\Users\\louis\\Code Projects\\Computer-Plays-Factorio\\factorio\\bin\\x64\\factorio.exe";
 std::string FactorioInstance::s_luaPath;
 
 #ifdef _WIN32
@@ -45,6 +47,11 @@ void FactorioInstance::InitStatic() {
         std::cerr << "WSAStartup: " << r << std::endl;
         exit(1);
     }
+
+    char path[MAX_PATH + 1];
+    GetModuleFileNameA(nullptr, path, MAX_PATH + 1);
+    s_luaPath = std::filesystem::path(path).parent_path().parent_path().string();
+    s_luaPath += "\\lua";
 #elif defined(__linux__)
     s_luaPath = std::filesystem::canonical("/proc/self/exe").parent_path();
     s_luaPath += "/lua";
@@ -57,7 +64,7 @@ bool FactorioInstance::IsFactorioPathValid(const std::string &path, std::string 
     std::string path_(path);
 
     FactorioInstance instance("PathChecker", false);
-    if (!instance.StartPrivate({
+    if (instance.StartPrivate({
         path_.data(),
         (char*)"--version",
         nullptr
@@ -111,7 +118,13 @@ bool FactorioInstance::Running() {
 #endif
 }
 
-bool FactorioInstance::Start(const std::function<void(FactorioInstance&)> &callback) {
+bool FactorioInstance::Start(const std::function<void(FactorioInstance&)> &callback, std::string *message) {
+    std::string m;
+    if (!IsFactorioPathValid(s_factorioPath, m)) {
+        *message = m;
+        return false;
+    }
+
     m_startCallback = callback;
     
     std::vector<char*> argv = {
@@ -131,19 +144,22 @@ bool FactorioInstance::Start(const std::function<void(FactorioInstance&)> &callb
 
     argv.push_back(nullptr);
 
-    bool success = StartPrivate(argv);
+    int err = StartPrivate(argv);
 
-    if (success) {
+    if (err) {
+        *message = "Error: ";
+        *message += std::to_string(err);
+    } else {
         m_fstdoutListener = std::thread(&FactorioInstance::StdoutListener, this);
         m_fstdoutListener.detach();
     }
 
-    return success;
+    return !err;
 }
 
-bool FactorioInstance::StartPrivate(const std::vector<char*> &argv) {
+int FactorioInstance::StartPrivate(const std::vector<char*> &argv) {
     std::unique_lock<std::mutex> lock(m_mutex);
-    if (Running()) return false;
+    if (Running()) return 0;
     if (!m_cleaned) Clean();
     m_cleaned = false;
 
@@ -198,6 +214,13 @@ bool FactorioInstance::StartPrivate(const std::vector<char*> &argv) {
     m_startupInfo.hStdOutput = wr;
     m_startupInfo.hStdError = wr;
 
+    std::string command;
+    for (const auto &str : argv) {
+        if (str == nullptr) break;
+        command += str;
+        command += ' ';
+    }
+
     if (!CreateProcessA(
         NULL,
         command.data(),
@@ -210,8 +233,9 @@ bool FactorioInstance::StartPrivate(const std::vector<char*> &argv) {
         &m_startupInfo,
         &m_processInfo
     )) {
-        std::cerr << "CreateProcessA" << std::endl;
-        exit(1);
+        auto err = GetLastError();
+        Clean();
+        return err;
     }
 
     if (!AssignProcessToJobObject(s_jobObject, m_processInfo.hProcess)) {
@@ -288,19 +312,14 @@ bool FactorioInstance::StartPrivate(const std::vector<char*> &argv) {
     posix_spawn_file_actions_destroy(&actions);
 
     if (err != 0) {
-        if (err == EPERM || err == ENOENT || err == ESRCH || err == EAGAIN || err == EACCES || err == EISDIR || err == EROFS) {
-            Clean();
-            return false;
-        } else {
-            std::cerr << "posix_spawnp: " << err << ": " << strerror(err) << std::endl;
-            exit(1);
-        }
+        Clean();
+        return err;
     }
 #else
 #error "Only Windows and Linux are supported for now"
 #endif
 
-    return true;
+    return 0;
 }
 
 bool FactorioInstance::Stop() {
@@ -346,8 +365,6 @@ void FactorioInstance::Clean() {
 }
 
 bool FactorioInstance::Join() {
-    if (m_process == 0) return false;
-
 #ifdef _WIN32
     WaitForSingleObject(m_processInfo.hProcess, 0xFFFFFFFF);
 
@@ -434,15 +451,19 @@ int FactorioInstance::StdoutRead(char *buffer, int size) {
     int32_t readBytes;
 
 #ifdef _WIN32
-    if (!ReadFile(m_fstdoutRead, buffer, size, &readBytes, &m_fstdoutOl) && GetLastError() == ERROR_IO_PENDING) {
-        if (!GetOverlappedResult(m_fstdoutRead, &m_fstdoutOl, &readBytes, 1)) {
+    DWORD rb;
+    if (!ReadFile(m_fstdoutRead, buffer, size, &rb, &m_fstdoutOl) && GetLastError() == ERROR_IO_PENDING) {
+        if (!GetOverlappedResult(m_fstdoutRead, &m_fstdoutOl, &rb, 1)) {
             DWORD e = GetLastError();
-            if (e != ERROR_IO_INCOMPLETE && e != ERROR_HANDLE_EOF) {
-                std::cerr << "ReadFile" << std::endl;
+            if (e == ERROR_IO_INCOMPLETE || e == ERROR_HANDLE_EOF) {
+                return 0;
+            } else {
+                std::cerr << "ReadFile: " << e << std::endl;
                 exit(1);
             }
         }
     }
+    readBytes = (uint32_t)rb;
 #elif defined(__linux__)
     readBytes = read(m_fstdoutRead, buffer, size);
     if (readBytes == -1) {
@@ -458,8 +479,6 @@ int FactorioInstance::StdoutRead(char *buffer, int size) {
 }
 
 void FactorioInstance::StdoutListener() {
-    std::cout << std::this_thread::get_id() << std::endl;
-
     std::string prevWord = "";
     while (Running()) {
         std::string word = "";

@@ -110,13 +110,21 @@
 //     return 0;
 // }
 
-#include "gui/mainWindow.hpp"
+#include "gui.hpp"
+#include "factorioAPI.hpp"
+#include "thread.hpp"
+
+using namespace ComputerPlaysFactorio;
 
 int main(int argc, char *argv[]) {
-    QApplication app(argc, argv);
+    FactorioInstance::InitStatic();
+    ThreadPool::Start(4);
 
-    ComputerPlaysFactorio::MainWindow w;
+    QApplication app(argc, argv);
+    MainWindow w;
     w.show();
-    
-    return app.exec();
+    int status = app.exec();
+
+    ThreadPool::Stop();
+    return status;
 }

@@ -11,6 +11,7 @@
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <Windows.h>
@@ -125,7 +126,7 @@ public:
     // Returns true if Factorio is running
     bool Running();
     // callback is called when the instance is up and ready
-    bool Start(const std::function<void(FactorioInstance&)> &callback = nullptr);
+    bool Start(const std::function<void(FactorioInstance&)> &callback = nullptr, std::string *message = nullptr);
     bool Stop();
     bool Join();
 
@@ -175,7 +176,7 @@ private:
 
     bool m_cleaned = true;
     void Clean();
-    bool StartPrivate(const std::vector<char*> &argv);
+    int StartPrivate(const std::vector<char*> &argv);
 
     int StdoutRead(char *buffer, int size);
     void StdoutListener();
