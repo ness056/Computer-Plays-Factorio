@@ -8,10 +8,21 @@
 
 namespace ComputerPlaysFactorio {
 
+struct SerializerPropertyBase {
+public:
+    inline const char *GetName() {
+        return p_name;
+    }
+
+protected:
+    SerializerPropertyBase(const char *name_) : p_name(name_) {}
+    const char *p_name;
+};
+
 template<class Class, class T>
-struct SerializerProperty {
-    constexpr SerializerProperty(const char *name_, T Class::* member_) : name(name_), member{member_} {}
-    const char *name;
+struct SerializerProperty : SerializerPropertyBase {
+    constexpr SerializerProperty(const char *name_, T Class::* member_) :
+        SerializerPropertyBase(name_), member{member_} {}
     T Class:: *member;
 };
 
@@ -57,10 +68,10 @@ public:
 protected:
     SerializableBase() = default;
 
-    virtual std::string GetName() const { return "unamed"; }
+    virtual const std::list<std::shared_ptr<SerializerPropertyBase>> &GetProperties();
 };
 
-template <typename T>
+template <typename T, const char *name>
 class Serializable : public SerializableBase {
 protected:
     Serializable() = default;
@@ -69,7 +80,7 @@ private:
     struct Register {
         Register() {
             SerializableFactory::Register(s_id,
-                {.name = T().GetName(), .Instantiate = [] { return std::make_unique<T>(); }}
+                {.name = name, .Instantiate = [] { return std::make_unique<T>(); }}
             );
         }
     };
