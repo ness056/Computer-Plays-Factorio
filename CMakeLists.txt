@@ -10,23 +10,28 @@ qt_standard_project_setup()
 
 qt_add_executable(${PROJECT_NAME}
     src/main.cpp
-    src/gui.hpp
-    src/gui.cpp
-    src/factorioAPI.hpp
-    src/factorioAPI.cpp
-    src/thread.hpp
-    src/thread.cpp
+    # src/gui.hpp
+    # src/gui.cpp
+    # src/factorioAPI.hpp
+    # src/factorioAPI.cpp
+    # src/thread.hpp
+    # src/thread.cpp
     src/serializer.hpp
     src/serializer.cpp
 )
 
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    WIN32_EXECUTABLE TRUE
+    MACOSX_BUNDLE TRUE
+)
+
 set_property(TARGET computer_plays_factorio PROPERTY CXX_STANDARD 20)
 
-if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
-else()
-    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
-endif()
+# if(MSVC)
+#     target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
+# else()
+#     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+# endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
 

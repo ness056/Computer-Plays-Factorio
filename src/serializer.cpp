@@ -2,17 +2,15 @@
 
 namespace ComputerPlaysFactorio {
 
-void Serialize(const std::string &data, std::string &out) {
-    Serialize(data.size(), out);
-    out.append(data);
+void SerializableFactory::Register(const std::size_t id, Descriptor descriptor) {
+    assert(s_descriptors.find(id) == s_descriptors.end() && "Double factory registration");
+    s_descriptors[id] = descriptor;
 }
 
-bool Deserialize(const std::string &data, size_t &i, std::string &out) {
-    size_t size;
-    if (!Deserialize(data, i, size)) return false;
-    if (data.size() - i < size) return false;
-    out = data.substr(i, size);
-    i += size;
-    return true;
+std::unique_ptr<SerializableBase> SerializableFactory::Instantiate(const std::size_t id) {
+    if (auto it = s_descriptors.find(id); it != s_descriptors.end()) {
+        return it->second.Instantiate();
+    }
+    return nullptr;
 }
 }

@@ -1,152 +1,19 @@
 #pragma once
 
-#include <concepts>
-#include <type_traits>
-#include <string>
-#include <vector>
+#include <QtCore>
 #include <map>
-#include <tuple>
-#include <cstring>
-#include <cstdint>
-
-#include <iostream>
-
-/**
- * Used to serialize data sent between C++ and Factorio.
- * 
- * Supports all numeric values, enums, strings, C arrays, vectors and maps.
- * Custom classes can also be serialize if they have a public member called
- *  properties that specifies what members are to be included in the serialization.
- * Does not support pointers.
- * 
- * Example:
- * 
- *  using namespace ComputerPlaysFactorio;
- *
- *  template<class T>
- *  struct Test {
- *      // included in the serialization
- *      int32_t a;
- *      bool b;
- *      MyEnum c;
- *      unsigned short d[40];
- *      std::string e;
- *      std::vector<T> f;
- *      std::map<std::string, uint64_t> g;
- * 
- *      // not included in the serialization
- *      uint8_t h;
- *      bool i;
- *      std::string j;
- *  
- *      constexpr static auto properties = MakeSerializerProperties(
- *          &Test<T>::a, &Test<T>::b, &Test<T>::c, &Test<T>::d,
- *          &Test<T>::e, &Test<T>::f, &Test<T>::g
- *      );
- *  };
- * 
- *  int main() {
- *      Test<std::string> data;
- *      std::string serialize;
- *      Serialize(data, serialize);
- *  
- *      Test<std::string> deserialize;
- *      size_t i = 0; // The index of the begining of the data in the string
- *      bool success = Deserialize(serialize, i, deserialize);
- *      // i is now the index of the end of the data in the string.
- *      // If the string data was invalid, some members of deserialize may become
- *      // filled with trash stuff.
- * 
- *      return 0;
- *  }
- */
+#include <list>
+#include <functional>
+#include <string>
 
 namespace ComputerPlaysFactorio {
 
-template<class T> requires (std::is_arithmetic_v<T> || std::is_enum_v<T>)
-void Serialize(const T &data, std::string &out) {
-    const char *p = reinterpret_cast<const char*>(&data);
-    out.append(p, sizeof(data));
-}
-
-template<class T> requires (std::is_bounded_array_v<T>)
-void Serialize(const T &data, std::string &out) {
-    const char *p = reinterpret_cast<const char*>(data);
-    out.append(p, sizeof(data));
-}
-
-void Serialize(const std::string &data, std::string &out);
-
-template<class T>
-void Serialize(const std::vector<T> &data, std::string &out) {
-    Serialize(data.size(), out);
-    for (auto const &e : data) {
-        Serialize(e, out);
-    }
-}
-
-template<class K, class T>
-void Serialize(const std::map<K, T> &data, std::string &out) {
-    Serialize(data.size(), out);
-    for (auto const &[k, v] : data) {
-        Serialize(k, out);
-        Serialize(v, out);
-    }
-}
-
-template<class T> requires (std::is_arithmetic_v<T> || std::is_enum_v<T>)
-bool Deserialize(const std::string &data, size_t &i, T &out) {
-    if (data.size() - i < sizeof(out)) return false;
-    out = *reinterpret_cast<const T*>(&data[i]);
-    i += sizeof(out);
-    return true;
-}
-
-template<class T> requires (std::is_bounded_array_v<T>)
-bool Deserialize(const std::string &data, size_t &i, T &out) {
-    if (data.size() - i < sizeof(out)) return false;
-    std::memcpy(out, &data[i], sizeof(out));
-    i += sizeof(out);
-    return true;
-}
-
-bool Deserialize(const std::string &data, size_t &i, std::string &out);
-
-template<class T>
-bool Deserialize(const std::string &data, size_t &i, std::vector<T> &out) {
-    size_t size;
-    if (!Deserialize(data, i, size)) return false;
-    out.resize(size);
-    for (size_t j = 0; j < size; j++) {
-        if (!Deserialize(data, i, out[j])) return false;
-    }
-    return true;
-}
-
-template<class K, class T>
-bool Deserialize(const std::string &data, size_t &i, std::map<K, T> &out) {
-    size_t size;
-    if (!Deserialize(data, i, size)) return false;
-    out.clear();
-    for (size_t j = 0; j < size; j++) {
-        K k; T v;
-        if (!Deserialize(data, i, k)) return false;
-        if (!Deserialize(data, i, v)) return false;
-        out[k] = v;
-    }
-    return true;
-}
-
 template<class Class, class T>
 struct SerializerProperty {
-    constexpr SerializerProperty(T Class::*member_) : member{member_} {}
-    T Class::*member;
+    constexpr SerializerProperty(const char *name_, T Class::* member_) : name(name_), member{member_} {}
+    const char *name;
+    T Class:: *member;
 };
-
-template<class Class, class... T>
-constexpr auto MakeSerializerProperties(T Class::*... members) {
-    return std::make_tuple(SerializerProperty(members)...);
-}
 
 template <class T, T... S, class F>
 constexpr void ForSequence(std::integer_sequence<T, S...>, F&& f) {
@@ -175,4 +42,68 @@ bool Deserialize(const std::string &data, size_t &i, T &out) {
 
     return success;
 }
+
+class SerializableFactory;
+
+/**
+ * This class should not be derived from.
+ * To make a class serializable derive that class from Serializable<class>.
+ */
+class SerializableBase {
+public:
+    virtual void Test() = 0;
+    virtual ~SerializableBase() = default;
+
+protected:
+    SerializableBase() = default;
+
+    virtual std::string GetName() const { return "unamed"; }
+};
+
+template <typename T>
+class Serializable : public SerializableBase {
+protected:
+    Serializable() = default;
+
+private:
+    struct Register {
+        Register() {
+            SerializableFactory::Register(s_id,
+                {.name = T().GetName(), .Instantiate = [] { return std::make_unique<T>(); }}
+            );
+        }
+    };
+    static inline const Register s_register = Register();
+
+public:
+    static inline const std::size_t s_id = reinterpret_cast<std::size_t>(&s_register);
+};
+
+/**
+ * This is mainly used for manual request sending for debuging
+ */
+class SerializableFactory {
+public:
+    using InstantiationMethod = std::function<std::unique_ptr<SerializableBase>()>;
+
+    struct Descriptor {
+        std::string name;
+        InstantiationMethod Instantiate;
+    };
+
+    SerializableFactory() = delete;
+
+    static void Register(const std::size_t id, Descriptor descriptor);
+    static std::unique_ptr<SerializableBase> Instantiate(const std::size_t id);
+    static inline const std::unordered_map<std::size_t, Descriptor> &GetAllClasses() {
+        return s_descriptors;
+    }
+
+private:
+    static inline std::unordered_map<std::size_t, Descriptor> s_descriptors;
+};
 }
+
+#define SerializerPropertiesBegin(name) \
+    public: virtual std::string VGetName() const override { return "C3"; } \
+    constexpr static auto properties = std::make_tuple(

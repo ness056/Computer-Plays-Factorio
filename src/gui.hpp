@@ -20,12 +20,15 @@ private slots:
     void About();
 
 private:
-    void FactorioTerminated();
-
     FactorioInstance m_graphicalInstance;
 
+    void CreateCentralWidget();
     void CreateActions();
     void CreateMenus();
+
+    QWidget *m_commandLineTab;
+    QWidget *m_requestSenderTab;
+    QTabWidget *m_tabWidget;
 
     QMenu *m_menuFile;
     QAction *m_actSetFactorioPath;

@@ -11,6 +11,8 @@ namespace ComputerPlaysFactorio {
 
 class ThreadPool {
 public:
+    ThreadPool() = delete;
+
     static void Start(uint8_t threadCount);
     static void QueueJob(const std::function<void()>& job);
     static void WaitAll();

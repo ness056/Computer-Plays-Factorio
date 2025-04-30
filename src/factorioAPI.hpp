@@ -1,12 +1,13 @@
 #pragma once
 
+#include <QProcess>
+#include <QString>
 #include <iostream>
 #include <string>
 #include <functional>
 #include <thread>
 #include <mutex>
 #include <map>
-#include <set>
 #include <filesystem>
 
 #ifdef _WIN32
@@ -14,13 +15,8 @@
 #define NOMINMAX
 #include <WinSock2.h>
 #include <WS2tcpip.h>
-#include <Windows.h>
 #pragma comment(lib, "WS2_32")
 #elif defined(__linux__)
-#include <signal.h>
-#include <spawn.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -68,7 +64,10 @@ struct RequestDataless {
     uint32_t id;
     RequestName name;
 
-    constexpr static auto properties = MakeSerializerProperties(&RequestDataless::id, &RequestDataless::name);
+    constexpr static auto properties = std::make_tuple(
+        SerializerProperty("id", &RequestDataless::id),
+        SerializerProperty("name", &RequestDataless::name)
+    );
 };
 
 template<class T>
@@ -102,7 +101,9 @@ struct Event {
     T data;
 };
 
-class FactorioInstance {
+class FactorioInstance : public QObject {
+    Q_OBJECT
+
 public:
     // Must be called before constructing any FactorioInstance
     static void InitStatic();
@@ -111,27 +112,28 @@ public:
     }
     static bool IsFactorioPathValid(const std::string &path, std::string &message);
 
-    FactorioInstance(const std::string &name, bool graphical);
+    FactorioInstance(const std::string &name, bool graphical, bool stdoutListener = true);
     // Blocks the thread to wait for Factorio to stop !
-    ~FactorioInstance();
+    inline ~FactorioInstance() {
+        Stop();
+        Join();
+    }
 
     FactorioInstance(const FactorioInstance&) = delete;
     void operator=(const FactorioInstance&)   = delete;
     void operator=(const FactorioInstance&&)  = delete;
 
-    inline void SetTerminateCallback(const std::function<void(FactorioInstance&, int exitCode)> &callback) {
-        m_terminateCallback = callback;
+    // Returns true if Factorio is running
+    inline bool Running() {
+        return m_process.state() != QProcess::ProcessState::NotRunning;
+    }
+    // callback is called when the instance is up and ready
+    bool Start(std::string *message = nullptr);
+    bool Stop();
+    inline bool Join(int ms = -1) {
+        return m_process.waitForFinished(ms);
     }
 
-    // Returns true if Factorio is running
-    bool Running();
-    // callback is called when the instance is up and ready
-    bool Start(const std::function<void(FactorioInstance&)> &callback = nullptr, std::string *message = nullptr);
-    bool Stop();
-    bool Join();
-
-    // SendRCON should be preferred (see comment at top of file)
-    bool WriteStdin(const std::string &data, int *writtenBytes = nullptr);
     bool SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND);
     template<class T, class R = int>
     bool SendRequest(RequestName name, const T &data, std::function<void(FactorioInstance&, R&)> callback = nullptr);
@@ -139,47 +141,27 @@ public:
     const std::string name;
     const bool graphical;
 
-    bool printStdout = false;
+signals:
+    void Started(FactorioInstance&);
+    void Ready(FactorioInstance&);      // Emitted after RCON connection was opened
+    void Closed(FactorioInstance&);     // Emitted after RCON connection was closed
+    void Terminated(FactorioInstance&, int exitCode, QProcess::ExitStatus);
+
+private slots:
+    void StdoutListener();
 
 private:
     static bool s_initStatic;
-#ifdef _WIN32
-    static HANDLE s_jobObject;
-#endif
 
     static std::string s_factorioPath;
     static std::string s_luaPath;
 
+    QProcess m_process;
     std::mutex m_mutex;
 
-    std::function<void(FactorioInstance&)> m_startCallback = nullptr;
-    std::function<void(FactorioInstance&, int exitCode)> m_terminateCallback = nullptr;
     std::map<int32_t, std::function<void(const std::string &data)>> m_pendingRequests;
-    
-    int m_exitCode;
-#ifdef _WIN32
-    STARTUPINFOA m_startupInfo;
-    PROCESS_INFORMATION m_processInfo;
-    HANDLE m_fstdinWrite;
-    HANDLE m_fstdoutRead;
-    HANDLE m_fstdoutEvent;
-    OVERLAPPED m_fstdoutOl;
-#elif defined(__linux__)
-    pid_t m_process = INT_MAX;
 
-    int m_fstdinWrite;
-    int m_fstdoutRead;
-#else
-#error "Only Windows and Linux are supported for now"
-#endif
-    std::thread m_fstdoutListener;
-
-    bool m_cleaned = true;
-    void Clean();
-    int StartPrivate(const std::vector<char*> &argv);
-
-    int StdoutRead(char *buffer, int size);
-    void StdoutListener();
+    bool StartPrivate(const std::string &path, const QStringList &argv);
 
     void StartRCON();
     void CloseRCON();

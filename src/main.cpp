@@ -110,21 +110,55 @@
 //     return 0;
 // }
 
-#include "gui.hpp"
-#include "factorioAPI.hpp"
-#include "thread.hpp"
+// #include "gui.hpp"
+// #include "factorioAPI.hpp"
+// #include "thread.hpp"
+#include <iostream>
+#include "serializer.hpp"
 
 using namespace ComputerPlaysFactorio;
 
+class C1 : public Serializable<C1> {
+public:
+    virtual std::string GetName() const override { return "C1"; }
+    void Test() override { std::cout << this << " id: " << C1::s_id << " name: " "C1" << std::endl; }
+};
+class C2 : public Serializable<C2> {
+public:
+    virtual std::string GetName() const override { return "C2"; }
+    void Test() override { std::cout << this << " id: " << C2::s_id << " name: " "C2" << std::endl; }
+};
+class C3 : public Serializable<C3> {
+public:
+    void Test() override { std::cout << this << " id: " << C3::s_id << " name: " "C3" << std::endl; }
+    void Test2() { std::cout << "C3 Test2" << std::endl; }
+};
+
 int main(int argc, char *argv[]) {
-    FactorioInstance::InitStatic();
-    ThreadPool::Start(4);
+    SerializableFactory::Instantiate(C1::s_id)->Test();
+    SerializableFactory::Instantiate(C2::s_id)->Test();
+    SerializableFactory::Instantiate(C3::s_id)->Test();
+    SerializableFactory::Instantiate(C1::s_id)->Test();
+    SerializableFactory::Instantiate(C2::s_id)->Test();
+    SerializableFactory::Instantiate(C3::s_id)->Test();
+    
+    auto map = SerializableFactory::GetAllClasses();
+    for (auto const &[id, d] : map) {
+        std::cout << id << " name: " << d.name << std::endl;
+    }
 
-    QApplication app(argc, argv);
-    MainWindow w;
-    w.show();
-    int status = app.exec();
+    auto test = SerializableFactory::Instantiate(C3::s_id);
+    auto test2 = dynamic_cast<C3*>(test.get());
+    test2->Test2();
 
-    ThreadPool::Stop();
-    return status;
+    // FactorioInstance::InitStatic();
+    // ThreadPool::Start(4);
+
+    // QApplication app(argc, argv);
+    // MainWindow w;
+    // w.show();
+    // int status = app.exec();
+
+    // ThreadPool::Stop();
+    // return status;
 }

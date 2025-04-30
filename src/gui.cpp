@@ -2,27 +2,40 @@
 
 namespace ComputerPlaysFactorio {
 
-MainWindow::MainWindow() : m_graphicalInstance("Graphical", true) {
+MainWindow::MainWindow() : m_graphicalInstance("Graphical", false) {
     setWindowTitle("Computer Plays Factorio");
     setMinimumSize(200, 200);
+    resize(800, 600);
 
-    QWidget *widget = new QWidget;
-    setCentralWidget(widget);
-
-    QHBoxLayout *layout = new QHBoxLayout;
-    widget->setLayout(layout);
-
+    CreateCentralWidget();
     CreateActions();
     CreateMenus();
 
-    m_graphicalInstance.printStdout = true;
-    m_graphicalInstance.SetTerminateCallback([this](FactorioInstance&, int) {
-        FactorioTerminated();
+    connect(&m_graphicalInstance, &FactorioInstance::Started, [this]() {
+        m_actToggleFactorio->setText("Stop Factorio");
+    });
+
+    connect(&m_graphicalInstance, &FactorioInstance::Terminated, [this]() {
+        m_actToggleFactorio->setText("Start Factorio");
     });
 }
 
-void MainWindow::FactorioTerminated() {
-    m_actToggleFactorio->setText("Start Factorio");
+void MainWindow::CreateCentralWidget() {
+    m_commandLineTab = new QWidget();
+    m_requestSenderTab = new QWidget();
+
+    m_tabWidget = new QTabWidget;
+    m_tabWidget->addTab(m_commandLineTab, "Command Line");
+    m_tabWidget->addTab(m_requestSenderTab, "Request Sender");
+    m_tabWidget->setTabVisible(0, false);
+    m_tabWidget->setTabVisible(1, false);
+
+    QHBoxLayout *layout = new QHBoxLayout;
+    layout->addWidget(m_tabWidget);
+
+    QWidget *widget = new QWidget;
+    widget->setLayout(layout);
+    setCentralWidget(widget);
 }
 
 void MainWindow::CreateActions() {
@@ -37,13 +50,13 @@ void MainWindow::CreateActions() {
     m_actExit->setShortcut(QKeySequence::Close);
     connect(m_actExit, &QAction::triggered, this, &MainWindow::close);
     
-    m_actShowRequestSender = new QAction("Request Sender", this);
-    m_actShowRequestSender->setCheckable(true);
-    connect(m_actShowRequestSender, &QAction::triggered, this, &MainWindow::ShowRequestSender);
-    
     m_actShowCommandLine = new QAction("Command Line", this);
     m_actShowCommandLine->setCheckable(true);
     connect(m_actShowCommandLine, &QAction::triggered, this, &MainWindow::ShowCommandLine);
+    
+    m_actShowRequestSender = new QAction("Request Sender", this);
+    m_actShowRequestSender->setCheckable(true);
+    connect(m_actShowRequestSender, &QAction::triggered, this, &MainWindow::ShowRequestSender);
     
     m_actAbout = new QAction("About", this);
     connect(m_actAbout, &QAction::triggered, this, &MainWindow::About);
@@ -85,27 +98,25 @@ void MainWindow::SetFactorioPath() {
 void MainWindow::ToggleFactorio() {
     if (m_graphicalInstance.Running()) {
         m_graphicalInstance.Stop();
-        m_actToggleFactorio->setText("Start Factorio");
     } else {
         std::string message;
-        if (!m_graphicalInstance.Start(nullptr, &message)) {
+        if (!m_graphicalInstance.Start(&message)) {
             QMessageBox msgBox(QMessageBox::Warning, "Could not start Factorio", QString::fromStdString(message));
             msgBox.exec();
-        } else {
-            m_actToggleFactorio->setText("Stop Factorio");
         }
     }
 }
 
 void MainWindow::ShowCommandLine(bool checked) {
-    std::cout << __LINE__ << " " << checked << std::endl;
+    m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_commandLineTab), checked);
 }
 
 void MainWindow::ShowRequestSender(bool checked) {
-    std::cout << __LINE__ << " " << checked << std::endl;
+    m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_requestSenderTab), checked);
 }
 
 void MainWindow::About() {
-    std::cout << __LINE__ << std::endl;
+    QMessageBox msgBox(QMessageBox::Information, "About", "TODO");
+    msgBox.exec();
 }
 }
