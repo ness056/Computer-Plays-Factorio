@@ -1,58 +1,48 @@
 #pragma once
 
 #include <QtCore>
+#include <memory>
 #include <map>
-#include <list>
+#include <vector>
 #include <functional>
 #include <string>
+#include <type_traits>
 
 namespace ComputerPlaysFactorio {
 
 struct SerializerPropertyBase {
 public:
-    inline const char *GetName() {
+    SerializerPropertyBase() = delete;
+
+    inline const char *GetName() const {
         return p_name;
     }
 
+    virtual std::string GetValue() const = 0;
+    virtual bool SetValue(const std::string&) = 0;
+
+    virtual QJsonValue GetJson() const = 0;
+    virtual bool SetJson(const QJsonValue&) = 0;
+
 protected:
-    SerializerPropertyBase(const char *name_) : p_name(name_) {}
+    constexpr SerializerPropertyBase(const char *name_) : p_name(name_) {}
     const char *p_name;
 };
 
 template<class Class, class T>
 struct SerializerProperty : SerializerPropertyBase {
     constexpr SerializerProperty(const char *name_, T Class::* member_) :
-        SerializerPropertyBase(name_), member{member_} {}
-    T Class:: *member;
+        SerializerPropertyBase(name_), m_member{member_} {}
+
+    virtual QJsonValue GetJson() const override;
+    virtual bool SetJson(const QJsonValue&) override;
+
+    virtual std::string GetValue() const override;
+    virtual bool SetValue(const std::string&) override;
+
+private:
+    T Class:: *m_member;
 };
-
-template <class T, T... S, class F>
-constexpr void ForSequence(std::integer_sequence<T, S...>, F&& f) {
-    (static_cast<void>(f(std::integral_constant<T, S>{})), ...);
-}
-
-template<class T>
-void Serialize(const T &object, std::string &out) {
-    constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
-
-    ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
-        constexpr auto property = std::get<j>(T::properties);
-        Serialize(object.*(property.member), out);
-    });
-}
-
-template<class T>
-bool Deserialize(const std::string &data, size_t &i, T &out) {
-    constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
-    bool success = true;
-
-    ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
-        constexpr auto property = std::get<j>(T::properties);
-        if (!Deserialize(data, i, out.*(property.member))) success = false;
-    });
-
-    return success;
-}
 
 class SerializableFactory;
 
@@ -65,14 +55,20 @@ public:
     virtual void Test() = 0;
     virtual ~SerializableBase() = default;
 
+    virtual QJsonObject ToJson() const = 0;
+
+    virtual const std::vector<std::unique_ptr<SerializerPropertyBase>> &GetProperties() const = 0;
+
 protected:
     SerializableBase() = default;
-
-    virtual const std::list<std::shared_ptr<SerializerPropertyBase>> &GetProperties();
 };
 
 template <typename T, const char *name>
 class Serializable : public SerializableBase {
+public:
+    virtual QJsonObject ToJson() const override;
+    static T FromJson(const QJsonObject&);
+
 protected:
     Serializable() = default;
 
