@@ -75,8 +75,6 @@ struct Request {
     uint32_t id;
     RequestName name;
     T data;
-
-    constexpr static auto properties = MakeSerializerProperties(&Request<T>::id, &Request<T>::name, &Request<T>::data);
 };
 
 template<class T>

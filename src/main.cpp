@@ -1,164 +1,108 @@
-// #include <iostream>
+#include <iostream>
+#include <string>
+#include <tuple>
+#include "serializer.hpp"
+#include "factorioAPI.hpp"
 
-// #include "factorioAPI.hpp"
-// #include "thread.hpp"
+using namespace ComputerPlaysFactorio;
 
-// #include <string>
-// #include <tuple>
-// #include "serializer.hpp"
+enum MyEnum : uint32_t {
+    EZ
+};
 
-// using namespace ComputerPlaysFactorio;
+template<class T>
+struct Test {
+    int32_t a;
+    bool b;
+    MyEnum c;
+    std::string d;
+    std::vector<T> e;
+    std::map<std::string, uint64_t> f;
+    float g;
+    double h;
+    RequestDataless i;
 
-// enum MyEnum : uint32_t {
-//     EZ
-// };
+    constexpr static auto properties = std::make_tuple(
+        SerializerProperty("a", &Test<T>::a),
+        SerializerProperty("b", &Test<T>::b),
+        SerializerProperty("c", &Test<T>::c),
+        SerializerProperty("d", &Test<T>::d),
+        SerializerProperty("e", &Test<T>::e),
+        SerializerProperty("f", &Test<T>::f),
+        SerializerProperty("g", &Test<T>::g),
+        SerializerProperty("h", &Test<T>::h),
+        SerializerProperty("i", &Test<T>::i)
+    );
+};
 
-// template<class T>
-// struct Test {
+int main() {
+    Test<std::string> t;
+    t.a = 23234;
+    t.b = true;
+    t.c = EZ;
+    t.d = "Je suis un gros caca";
+    t.e = {"a", "aepra", "ffff"};
+    t.f = {{"era", 50}, {"eraerrrr", 23}};
+    t.g = 20.32442323f;
+    t.h = 9404.2308949344;
+    t.i.id = 10;
+    t.i.name = TEST_REQUEST_NAME;
 
-//     int32_t a;
-//     bool b;
-//     MyEnum c;
-//     unsigned short d[4];
-//     std::string e;
-//     std::vector<T> f;
-//     std::map<std::string, uint64_t> g;
-//     float h;
-//     double i;
+    std::cout << 
+        t.a << "; " <<
+        t.b << "; " <<
+        (int)t.c << "; " <<
+        t.d << "; " <<
+        t.e[0] << "; " <<
+        t.e[1] << "; " <<
+        t.e[2] << "; " <<
+        (*t.f.begin()).first << ":" <<
+        (*t.f.begin()).second << "; " <<
+        (*++t.f.begin()).first << ":" <<
+        (*++t.f.begin()).second << "; " <<
+        t.g << "; " <<
+        t.h << "; " <<
+        t.i.id << "; " <<
+        t.i.name << "; " << std::endl;
 
-//     constexpr static auto properties = MakeSerializerProperties(
-//         &Test<T>::a, &Test<T>::b, &Test<T>::c, &Test<T>::d,
-//         &Test<T>::e, &Test<T>::f, &Test<T>::g, &Test<T>::h, &Test<T>::i
-//     );
-// };
+    auto json = ToJson(t);
+    std::cout << "json: " << QJsonDocument(json).toJson().toStdString() << std::endl;
 
-// int main() {
-//     Test<std::string> t;
-//     t.a = 23234;
-//     t.b = true;
-//     t.c = EZ;
-//     t.d[0] = 1;
-//     t.d[1] = 2;
-//     t.d[2] = 3;
-//     t.d[3] = 4;
-//     t.e = "Je suis un gros caca";
-//     t.f = {"a", "aepra", "ffff"};
-//     t.g = {{"era", 50}, {"eraerrrr", 23}};
-//     t.h = 20.32442323f;
-//     t.i = 9404.2308949344;
-
-//     std::cout << 
-//         t.a << "; " <<
-//         t.b << "; " <<
-//         (int)t.c << "; " <<
-//         t.d[0] << "; " <<
-//         t.d[1] << "; " <<
-//         t.d[2] << "; " <<
-//         t.d[3] << "; " <<
-//         t.e << "; " <<
-//         t.f[0] << "; " <<
-//         t.f[1] << "; " <<
-//         t.f[2] << "; " <<
-//         (*t.g.begin()).first << ":" <<
-//         (*t.g.begin()).second << "; " <<
-//         (*++t.g.begin()).first << ":" <<
-//         (*++t.g.begin()).second << "; " <<
-//         t.h << "; " <<
-//         t.i << "; " << std::endl;
-//     // std::string s;
-//     // Serialize(t, s);
-//     // std::cout << "s: " << s << std::endl;
-    
-//     // Request<Test<std::string>> t_;
-//     // size_t i = 0;
-//     // bool success = Deserialize(s, i, t_);
-//     // std::cout << success << std::endl;
-
-//     // std::cout << 
-//     //     (int)t_.name << "; " <<
-//     //     t_.id << "; " <<
-//     //     t_.data.a << "; " <<
-//     //     t_.data.b << "; " <<
-//     //     (int)t_.data.c << "; " <<
-//     //     t_.data.d[0] << "; " <<
-//     //     t_.data.d[1] << "; " <<
-//     //     t_.data.d[2] << "; " <<
-//     //     t_.data.d[3] << "; " <<
-//     //     t_.data.e << "; " <<
-//     //     t_.data.f[0] << "; " <<
-//     //     t_.data.f[1] << "; " <<
-//     //     t_.data.f[2] << "; " <<
-//     //     (*t_.data.g.begin()).first << ":" <<
-//     //     (*t_.data.g.begin()).second << "; " <<
-//     //     (*++t_.data.g.begin()).first << ":" <<
-//     //     (*++t_.data.g.begin()).second << "; " <<
-//     //     t.data.h << "; " <<
-//     //     t.data.i << "; " << std::endl;
-
-//     FactorioInstance::InitStatic();
-//     ThreadPool::Start(4);
-    
-//     FactorioInstance instance("name", true);
-//     instance.printStdout = true;
-
-//     instance.Start([t](FactorioInstance &instance) {
-//         instance.SendRequest(TEST_REQUEST_NAME, t);
-//     });
-
-//     instance.Join();
-
-//     return 0;
-// }
+    Test<std::string> t_;
+    FromJson(json, t_);
+    std::cout << 
+        t_.a << "; " <<
+        t_.b << "; " <<
+        (int)t_.c << "; " <<
+        t_.d << "; " <<
+        t_.e[0] << "; " <<
+        t_.e[1] << "; " <<
+        t_.e[2] << "; " <<
+        (*t_.f.begin()).first << ":" <<
+        (*t_.f.begin()).second << "; " <<
+        (*++t_.f.begin()).first << ":" <<
+        (*++t_.f.begin()).second << "; " <<
+        t_.g << "; " <<
+        t_.h << "; " <<
+        t_.i.id << "; " <<
+        t_.i.name << "; " << std::endl;
+}
 
 // #include "gui.hpp"
 // #include "factorioAPI.hpp"
 // #include "thread.hpp"
-#include <iostream>
-#include "serializer.hpp"
 
-using namespace ComputerPlaysFactorio;
+// using namespace ComputerPlaysFactorio;
 
-class C1 : public Serializable<C1> {
-public:
-    virtual std::string GetName() const override { return "C1"; }
-    void Test() override { std::cout << this << " id: " << C1::s_id << " name: " "C1" << std::endl; }
-};
-class C2 : public Serializable<C2> {
-public:
-    virtual std::string GetName() const override { return "C2"; }
-    void Test() override { std::cout << this << " id: " << C2::s_id << " name: " "C2" << std::endl; }
-};
-class C3 : public Serializable<C3> {
-public:
-    void Test() override { std::cout << this << " id: " << C3::s_id << " name: " "C3" << std::endl; }
-    void Test2() { std::cout << "C3 Test2" << std::endl; }
-};
+// int main(int argc, char *argv[]) {
+//     FactorioInstance::InitStatic();
+//     ThreadPool::Start(4);
 
-int main(int argc, char *argv[]) {
-    SerializableFactory::Instantiate(C1::s_id)->Test();
-    SerializableFactory::Instantiate(C2::s_id)->Test();
-    SerializableFactory::Instantiate(C3::s_id)->Test();
-    SerializableFactory::Instantiate(C1::s_id)->Test();
-    SerializableFactory::Instantiate(C2::s_id)->Test();
-    SerializableFactory::Instantiate(C3::s_id)->Test();
-    
-    auto map = SerializableFactory::GetAllClasses();
-    for (auto const &[id, d] : map) {
-        std::cout << id << " name: " << d.name << std::endl;
-    }
+//     QApplication app(argc, argv);
+//     MainWindow w;
+//     w.show();
+//     int status = app.exec();
 
-    auto test = SerializableFactory::Instantiate(C3::s_id);
-    auto test2 = dynamic_cast<C3*>(test.get());
-    test2->Test2();
-
-    // FactorioInstance::InitStatic();
-    // ThreadPool::Start(4);
-
-    // QApplication app(argc, argv);
-    // MainWindow w;
-    // w.show();
-    // int status = app.exec();
-
-    // ThreadPool::Stop();
-    // return status;
-}
+//     ThreadPool::Stop();
+//     return status;
+// }

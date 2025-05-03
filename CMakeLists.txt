@@ -17,13 +17,12 @@ qt_add_executable(${PROJECT_NAME}
     # src/thread.hpp
     # src/thread.cpp
     src/serializer.hpp
-    src/serializer.cpp
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    WIN32_EXECUTABLE TRUE
-    MACOSX_BUNDLE TRUE
-)
+# set_target_properties(${PROJECT_NAME} PROPERTIES
+#     WIN32_EXECUTABLE TRUE
+#     MACOSX_BUNDLE TRUE
+# )
 
 set_property(TARGET computer_plays_factorio PROPERTY CXX_STANDARD 20)
 

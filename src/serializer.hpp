@@ -1,116 +1,184 @@
 #pragma once
 
-#include <QtCore>
-#include <memory>
-#include <map>
-#include <vector>
-#include <functional>
-#include <string>
+#include <concepts>
 #include <type_traits>
+#include <string>
+#include <vector>
+#include <map>
+#include <tuple>
+#include <cstring>
+#include <cstdint>
+#include <QtCore>
+
+/**
+ * Used to serialize data sent between C++ and Factorio.
+ * 
+ * Supports booleans, all numeric values, enums, strings, C arrays, vectors and maps with string as keys.
+ * Custom classes can also be serialize if they have a public member called
+ *  properties that specifies what members are to be included in the serialization.
+ * Does not support pointers.
+ * 
+ * Example:
+ * 
+ *  using namespace ComputerPlaysFactorio;
+ *
+ *  template<class T>
+ *  struct Test {
+ *      // included in the serialization
+ *      int32_t a;
+ *      bool b;
+ *      MyEnum c;
+ *      SomeOtherSerializableClass d;
+ *      std::string e;
+ *      std::vector<T> f;
+ *      std::map<std::string, uint64_t> g;
+ * 
+ *      // not included in the serialization
+ *      uint8_t h;
+ *      bool i;
+ *      std::string j;
+ *  
+ *      constexpr static auto properties = std::make_tuple(
+ *          SerializerProperty("a", &Test<T>::a),
+ *          SerializerProperty("b", &Test<T>::b),
+ *          SerializerProperty("c", &Test<T>::c),
+ *          SerializerProperty("d", &Test<T>::d),
+ *          SerializerProperty("e", &Test<T>::e),
+ *          SerializerProperty("f", &Test<T>::f),
+ *          SerializerProperty("g", &Test<T>::g)
+ *      );
+ *  };
+ * 
+ *  int main() {
+ *      Test<std::string> data;
+ *      QJsonObject json = ToJson(data);
+ *  
+ *      Test<std::string> deserialized;
+ *      FromJson(json, deserialized);
+ * 
+ *      return 0;
+ *  }
+ */
 
 namespace ComputerPlaysFactorio {
 
-struct SerializerPropertyBase {
-public:
-    SerializerPropertyBase() = delete;
-
-    inline const char *GetName() const {
-        return p_name;
-    }
-
-    virtual std::string GetValue() const = 0;
-    virtual bool SetValue(const std::string&) = 0;
-
-    virtual QJsonValue GetJson() const = 0;
-    virtual bool SetJson(const QJsonValue&) = 0;
-
-protected:
-    constexpr SerializerPropertyBase(const char *name_) : p_name(name_) {}
-    const char *p_name;
-};
-
 template<class Class, class T>
-struct SerializerProperty : SerializerPropertyBase {
-    constexpr SerializerProperty(const char *name_, T Class::* member_) :
-        SerializerPropertyBase(name_), m_member{member_} {}
+struct SerializerProperty {
+    constexpr SerializerProperty(const char *name_, T Class::* member_) : name(name_), member{member_} {}
 
-    virtual QJsonValue GetJson() const override;
-    virtual bool SetJson(const QJsonValue&) override;
-
-    virtual std::string GetValue() const override;
-    virtual bool SetValue(const std::string&) override;
-
-private:
-    T Class:: *m_member;
+    const char *name;
+    T Class:: *member;
 };
 
-class SerializableFactory;
-
-/**
- * This class should not be derived from.
- * To make a class serializable derive that class from Serializable<class>.
- */
-class SerializableBase {
-public:
-    virtual void Test() = 0;
-    virtual ~SerializableBase() = default;
-
-    virtual QJsonObject ToJson() const = 0;
-
-    virtual const std::vector<std::unique_ptr<SerializerPropertyBase>> &GetProperties() const = 0;
-
-protected:
-    SerializableBase() = default;
-};
-
-template <typename T, const char *name>
-class Serializable : public SerializableBase {
-public:
-    virtual QJsonObject ToJson() const override;
-    static T FromJson(const QJsonObject&);
-
-protected:
-    Serializable() = default;
-
-private:
-    struct Register {
-        Register() {
-            SerializableFactory::Register(s_id,
-                {.name = name, .Instantiate = [] { return std::make_unique<T>(); }}
-            );
-        }
-    };
-    static inline const Register s_register = Register();
-
-public:
-    static inline const std::size_t s_id = reinterpret_cast<std::size_t>(&s_register);
-};
-
-/**
- * This is mainly used for manual request sending for debuging
- */
-class SerializableFactory {
-public:
-    using InstantiationMethod = std::function<std::unique_ptr<SerializableBase>()>;
-
-    struct Descriptor {
-        std::string name;
-        InstantiationMethod Instantiate;
-    };
-
-    SerializableFactory() = delete;
-
-    static void Register(const std::size_t id, Descriptor descriptor);
-    static std::unique_ptr<SerializableBase> Instantiate(const std::size_t id);
-    static inline const std::unordered_map<std::size_t, Descriptor> &GetAllClasses() {
-        return s_descriptors;
-    }
-
-private:
-    static inline std::unordered_map<std::size_t, Descriptor> s_descriptors;
-};
+inline QJsonValue ToJson(const bool &v) {
+    return QJsonValue(v);
 }
 
-#define SerializerPropertiesBegin(name) \
-    public: virtual std::string VGetName() const override { return "C3"; } \
-    constexpr static auto properties = std::make_tuple(
+template<class T> requires (std::is_integral_v<T> || std::is_enum_v<T>)
+inline QJsonValue ToJson(const T &v) {
+    return QJsonValue(static_cast<qint64>(v));
+}
+
+template<class T> requires (std::is_floating_point_v<T>)
+inline QJsonValue ToJson(const T &v) {
+    return QJsonValue(static_cast<double>(v));
+}
+
+inline QJsonValue ToJson(const std::string &v) {
+    return QJsonValue(v.c_str());
+}
+
+template<class T>
+QJsonArray ToJson(const std::vector<T> &v) {
+    QJsonArray r;
+    for (const auto &v_ : v) {
+        r.push_back(ToJson(v_));
+    }
+    return r;
+}
+
+template<class T>
+QJsonObject ToJson(const std::map<std::string, T> &v) {
+    QJsonObject r;
+    for (const auto &[k, v_] : v) {
+        r[k.c_str()] = ToJson(v_);
+    }
+    return r;
+}
+
+void FromJson(const QJsonValue &json, bool &out) {
+    out = json.toBool();
+}
+
+template<class T> requires (std::is_integral_v<T> || std::is_enum_v<T>)
+void FromJson(const QJsonValue &json, T &out) {
+    out = static_cast<T>(json.toInteger());
+}
+
+template<class T> requires (std::is_floating_point_v<T>)
+void FromJson(const QJsonValue &json, T &out) {
+    out = static_cast<T>(json.toDouble());
+}
+
+void FromJson(const QJsonValue &json, std::string &out) {
+    out = json.toString().toStdString();
+}
+
+template<class T>
+void FromJson(const QJsonValue &json, std::vector<T> &out) {
+    if (json.isArray()) {
+        auto array = json.toArray();
+        out.clear();
+        out.resize(array.size());
+        auto it = out.begin();
+        for (const auto &v : array) {
+            FromJson(v, *it);
+            it++;
+        }
+    }
+}
+
+template<class T>
+void FromJson(const QJsonValue &json, std::map<std::string, T> &out) {
+    if (json.isObject()) {
+        auto object = json.toObject();
+        out.clear();
+        for (auto it = object.begin(); it != object.end(); it++) {
+            T v_;
+            FromJson(it.value(), v_);
+            out[it.key().toStdString()] = v_;
+        }
+    }
+}
+
+template <class T, T... S, class F>
+constexpr void ForSequence(std::integer_sequence<T, S...>, F&& f) {
+    (static_cast<void>(f(std::integral_constant<T, S>{})), ...);
+}
+
+template<class T>
+QJsonObject ToJson(const T &v) {
+    constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
+    QJsonObject r;
+
+    ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
+        constexpr auto property = std::get<j>(T::properties);
+
+        r[property.name] = ToJson(v.*(property.member));
+    });
+
+    return r;
+}
+
+template<class T>
+void FromJson(const QJsonValue &json, T &out) {
+    constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
+
+    ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
+        constexpr auto property = std::get<j>(T::properties);
+        if (const QJsonValue v = json[property.name]; !v.isUndefined()) {
+            FromJson(v, out.*(property.member));
+        }
+    });
+}
+}
