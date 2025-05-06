@@ -2,121 +2,141 @@
 
 namespace ComputerPlaysFactorio {
 
-MainWindow::MainWindow() : m_graphicalInstance("Graphical", false) {
-    setWindowTitle("Computer Plays Factorio");
-    setMinimumSize(200, 200);
-    resize(800, 600);
+    MainWindow::MainWindow() : m_graphicalInstance("Graphical", FactorioInstance::HEADLESS) {
+        setWindowTitle("Computer Plays Factorio");
+        setMinimumSize(200, 200);
+        resize(800, 600);
 
-    CreateCentralWidget();
-    CreateActions();
-    CreateMenus();
+        CreateCentralWidget();
+        CreateActions();
+        CreateMenus();
 
-    connect(&m_graphicalInstance, &FactorioInstance::Started, [this]() {
-        m_actToggleFactorio->setText("Stop Factorio");
-    });
+        m_graphicalInstance.printStdout = true;
+        connect(&m_graphicalInstance, &FactorioInstance::Started, [this]() {
+            m_actToggleFactorio->setText("Stop Factorio");
+        });
 
-    connect(&m_graphicalInstance, &FactorioInstance::Terminated, [this]() {
-        m_actToggleFactorio->setText("Start Factorio");
-    });
-}
+        connect(&m_graphicalInstance, &FactorioInstance::Terminated, [this]() {
+            m_actToggleFactorio->setText("Start Factorio");
+        });
+    }
 
-void MainWindow::CreateCentralWidget() {
-    m_commandLineTab = new QWidget();
-    m_requestSenderTab = new QWidget();
+    void MainWindow::CreateCentralWidget() {
+        QPushButton *buttonTest = new QPushButton("Test");
+        connect(buttonTest, &QPushButton::clicked, [this]() {
+            m_graphicalInstance.SendRequest("test", 12093);
+        });
 
-    m_tabWidget = new QTabWidget;
-    m_tabWidget->addTab(m_commandLineTab, "Command Line");
-    m_tabWidget->addTab(m_requestSenderTab, "Request Sender");
-    m_tabWidget->setTabVisible(0, false);
-    m_tabWidget->setTabVisible(1, false);
+        QPushButton *buttonTest2 = new QPushButton("Test2");
+        connect(buttonTest2, &QPushButton::clicked, [this]() {
+            auto start = std::chrono::high_resolution_clock::now().time_since_epoch().count()/1e3;
+            m_graphicalInstance.SendRequest<int, int>("test", 23323, [start](FactorioInstance&, const Response<int> &) {
+                auto end = std::chrono::high_resolution_clock::now().time_since_epoch().count()/1e3;
+                g_info << "data: " << d << "\n";
+                g_info << "start: " << start << "ns\n";
+                g_info << "end: " << end << "ns\n";
+                g_info << "duration: " << end - start << "ns" << std::endl;
+            });
+        });
+        
+        m_commandLineTab = new QWidget();
+        m_requestSenderTab = new QWidget();
 
-    QHBoxLayout *layout = new QHBoxLayout;
-    layout->addWidget(m_tabWidget);
+        m_tabWidget = new QTabWidget;
+        m_tabWidget->addTab(m_commandLineTab, "Command Line");
+        m_tabWidget->addTab(m_requestSenderTab, "Request Sender");
+        m_tabWidget->setTabVisible(0, false);
+        m_tabWidget->setTabVisible(1, false);
 
-    QWidget *widget = new QWidget;
-    widget->setLayout(layout);
-    setCentralWidget(widget);
-}
+        QHBoxLayout *layout = new QHBoxLayout;
+        layout->addWidget(buttonTest);
+        layout->addWidget(buttonTest2);
+        layout->addWidget(m_tabWidget);
 
-void MainWindow::CreateActions() {
-    m_actSetFactorioPath = new QAction("Select Factorio", this);
-    m_actSetFactorioPath->setStatusTip("Select the factorio binary path.");
-    connect(m_actSetFactorioPath, &QAction::triggered, this, &MainWindow::SetFactorioPath);
-    
-    m_actToggleFactorio = new QAction("Start Factorio", this);
-    connect(m_actToggleFactorio, &QAction::triggered, this, &MainWindow::ToggleFactorio);
-    
-    m_actExit = new QAction(QIcon::fromTheme(QIcon::ThemeIcon::ApplicationExit),"Exit", this);
-    m_actExit->setShortcut(QKeySequence::Close);
-    connect(m_actExit, &QAction::triggered, this, &MainWindow::close);
-    
-    m_actShowCommandLine = new QAction("Command Line", this);
-    m_actShowCommandLine->setCheckable(true);
-    connect(m_actShowCommandLine, &QAction::triggered, this, &MainWindow::ShowCommandLine);
-    
-    m_actShowRequestSender = new QAction("Request Sender", this);
-    m_actShowRequestSender->setCheckable(true);
-    connect(m_actShowRequestSender, &QAction::triggered, this, &MainWindow::ShowRequestSender);
-    
-    m_actAbout = new QAction("About", this);
-    connect(m_actAbout, &QAction::triggered, this, &MainWindow::About);
-}
+        QWidget *widget = new QWidget;
+        widget->setLayout(layout);
+        setCentralWidget(widget);
+    }
 
-void MainWindow::CreateMenus() {
-    m_menuFile = menuBar()->addMenu("File");
-    m_menuFile->addAction(m_actSetFactorioPath);
-    m_menuFile->addAction(m_actToggleFactorio);
-    m_menuFile->addSeparator();
-    m_menuFile->addAction(m_actExit);
+    void MainWindow::CreateActions() {
+        m_actSetFactorioPath = new QAction("Select Factorio", this);
+        m_actSetFactorioPath->setStatusTip("Select the factorio binary path.");
+        connect(m_actSetFactorioPath, &QAction::triggered, this, &MainWindow::SetFactorioPath);
+        
+        m_actToggleFactorio = new QAction("Start Factorio", this);
+        connect(m_actToggleFactorio, &QAction::triggered, this, &MainWindow::ToggleFactorio);
+        
+        m_actExit = new QAction(QIcon::fromTheme(QIcon::ThemeIcon::ApplicationExit),"Exit", this);
+        m_actExit->setShortcut(QKeySequence::Close);
+        connect(m_actExit, &QAction::triggered, this, &MainWindow::close);
+        
+        m_actShowCommandLine = new QAction("Command Line", this);
+        m_actShowCommandLine->setCheckable(true);
+        connect(m_actShowCommandLine, &QAction::triggered, this, &MainWindow::ShowCommandLine);
+        
+        m_actShowRequestSender = new QAction("Request Sender", this);
+        m_actShowRequestSender->setCheckable(true);
+        connect(m_actShowRequestSender, &QAction::triggered, this, &MainWindow::ShowRequestSender);
+        
+        m_actAbout = new QAction("About", this);
+        connect(m_actAbout, &QAction::triggered, this, &MainWindow::About);
+    }
 
-    m_menuView = menuBar()->addMenu("View");
-    m_menuViewDebug = m_menuView->addMenu("Debug");
-    m_menuViewDebug->addAction(m_actShowCommandLine);
-    m_menuViewDebug->addAction(m_actShowRequestSender);
+    void MainWindow::CreateMenus() {
+        m_menuFile = menuBar()->addMenu("File");
+        m_menuFile->addAction(m_actSetFactorioPath);
+        m_menuFile->addAction(m_actToggleFactorio);
+        m_menuFile->addSeparator();
+        m_menuFile->addAction(m_actExit);
 
-    m_menuHelp = menuBar()->addMenu("Help");
-    m_menuHelp->addAction(m_actAbout);
-}
+        m_menuView = menuBar()->addMenu("View");
+        m_menuViewDebug = m_menuView->addMenu("Debug");
+        m_menuViewDebug->addAction(m_actShowCommandLine);
+        m_menuViewDebug->addAction(m_actShowRequestSender);
 
-void MainWindow::SetFactorioPath() {
-    QFileDialog dialog(this);
-    dialog.setFileMode(QFileDialog::ExistingFile);
-    if (dialog.exec()) {
-        auto fileNames = dialog.selectedFiles();
-        const auto fileName = fileNames[0].toStdString();
+        m_menuHelp = menuBar()->addMenu("Help");
+        m_menuHelp->addAction(m_actAbout);
+    }
 
-        std::string message;
-        if (FactorioInstance::IsFactorioPathValid(fileName, message)) {
-            FactorioInstance::SetFactorioPath(fileName);
+    void MainWindow::SetFactorioPath() {
+        QFileDialog dialog(this);
+        dialog.setFileMode(QFileDialog::ExistingFile);
+        if (dialog.exec()) {
+            auto fileNames = dialog.selectedFiles();
+            const auto fileName = fileNames[0].toStdString();
+
+            std::string message;
+            if (FactorioInstance::IsFactorioPathValid(fileName, message)) {
+                FactorioInstance::SetFactorioPath(fileName);
+            } else {
+                QMessageBox msgBox(QMessageBox::Warning, "Invalid path", QString::fromStdString(message));
+                msgBox.exec();
+            }
+        }
+    }
+
+    void MainWindow::ToggleFactorio() {
+        if (m_graphicalInstance.Running()) {
+            m_graphicalInstance.Stop();
         } else {
-            QMessageBox msgBox(QMessageBox::Warning, "Invalid path", QString::fromStdString(message));
-            msgBox.exec();
+            std::string message;
+            if (!m_graphicalInstance.Start(&message)) {
+                QMessageBox msgBox(QMessageBox::Warning, "Could not start Factorio", QString::fromStdString(message));
+                msgBox.exec();
+            }
         }
     }
-}
 
-void MainWindow::ToggleFactorio() {
-    if (m_graphicalInstance.Running()) {
-        m_graphicalInstance.Stop();
-    } else {
-        std::string message;
-        if (!m_graphicalInstance.Start(&message)) {
-            QMessageBox msgBox(QMessageBox::Warning, "Could not start Factorio", QString::fromStdString(message));
-            msgBox.exec();
-        }
+    void MainWindow::ShowCommandLine(bool checked) {
+        m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_commandLineTab), checked);
     }
-}
 
-void MainWindow::ShowCommandLine(bool checked) {
-    m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_commandLineTab), checked);
-}
+    void MainWindow::ShowRequestSender(bool checked) {
+        m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_requestSenderTab), checked);
+    }
 
-void MainWindow::ShowRequestSender(bool checked) {
-    m_tabWidget->setTabVisible(m_tabWidget->indexOf(m_requestSenderTab), checked);
-}
-
-void MainWindow::About() {
-    QMessageBox msgBox(QMessageBox::Information, "About", "TODO");
-    msgBox.exec();
-}
+    void MainWindow::About() {
+        QMessageBox msgBox(QMessageBox::Information, "About", "TODO");
+        msgBox.exec();
+    }
 }

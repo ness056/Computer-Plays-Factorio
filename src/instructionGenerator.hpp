@@ -2,7 +2,7 @@
 
 namespace ComputerPlaysFactorio {
 
-class InstructionGenerator {
-    
-};
+    class InstructionGenerator {
+        
+    };
 }

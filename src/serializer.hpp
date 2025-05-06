@@ -37,16 +37,22 @@
  *      uint8_t h;
  *      bool i;
  *      std::string j;
+ * 
+ *  private:
+ *      // also included but with a modified name in order to remove the m_
+ *      bool m_k;   // will be "k": true/false in JSON
+ *      int m_l;
  *  
- *      constexpr static auto properties = std::make_tuple(
- *          SerializerProperty("a", &Test<T>::a),
- *          SerializerProperty("b", &Test<T>::b),
- *          SerializerProperty("c", &Test<T>::c),
- *          SerializerProperty("d", &Test<T>::d),
- *          SerializerProperty("e", &Test<T>::e),
- *          SerializerProperty("f", &Test<T>::f),
- *          SerializerProperty("g", &Test<T>::g)
- *      );
+ *      #define CLASS Test<T>
+ *      PROPERTIES_BEGIN
+ *          AUTO_NAMED_PROPERTIES(a, b, c, d, e, f, g)
+ *          CUSTOM_NAMED_PROPERTIES("k", somethingWeDontWant_k, "l", somethingWeDontWant_l)
+ *      PROPERTIES_END
+ *      #undef CLASS
+ * 
+ *      // Additionally, in case all the members we want to include can be named automatically,
+ *      // we can use the following macro instead of the 6 lines above:
+ *      QUICK_AUTO_NAMED_PROPERTIES(a, b, c, d, e, f, g)
  *  };
  * 
  *  int main() {
@@ -62,123 +68,157 @@
 
 namespace ComputerPlaysFactorio {
 
-template<class Class, class T>
-struct SerializerProperty {
-    constexpr SerializerProperty(const char *name_, T Class::* member_) : name(name_), member{member_} {}
+    template<class Class, class T>
+    struct SerializerProperty {
+        constexpr SerializerProperty(const char *name_, T Class::* member_) : name(name_), member{member_} {}
 
-    const char *name;
-    T Class:: *member;
-};
+        const char *name;
+        T Class:: *member;
+    };
 
-inline QJsonValue ToJson(const bool &v) {
-    return QJsonValue(v);
-}
+#define PROPERTIES_BEGIN \
+private:                                                    \
+    template<class T>                                       \
+    friend void FromJson(const QJsonValue &json, T &out);   \
+    template<class T>                                       \
+    friend QJsonObject ToJson(const T &v);                  \
+    constexpr static auto properties = std::make_tuple(
 
-template<class T> requires (std::is_integral_v<T> || std::is_enum_v<T>)
-inline QJsonValue ToJson(const T &v) {
-    return QJsonValue(static_cast<qint64>(v));
-}
+#define PROPERTIES_END );
 
-template<class T> requires (std::is_floating_point_v<T>)
-inline QJsonValue ToJson(const T &v) {
-    return QJsonValue(static_cast<double>(v));
-}
+#define PARENS ()
+#define COMMA ,
 
-inline QJsonValue ToJson(const std::string &v) {
-    return QJsonValue(v.c_str());
-}
+#define EXPAND(...) EXPAND4(EXPAND4(EXPAND4(EXPAND4(__VA_ARGS__))))
+#define EXPAND4(...) EXPAND3(EXPAND3(EXPAND3(EXPAND3(__VA_ARGS__))))
+#define EXPAND3(...) EXPAND2(EXPAND2(EXPAND2(EXPAND2(__VA_ARGS__))))
+#define EXPAND2(...) EXPAND1(EXPAND1(EXPAND1(EXPAND1(__VA_ARGS__))))
+#define EXPAND1(...) __VA_ARGS__
 
-template<class T>
-QJsonArray ToJson(const std::vector<T> &v) {
-    QJsonArray r;
-    for (const auto &v_ : v) {
-        r.push_back(ToJson(v_));
+#define AUTO_NAMED_PROPERTIES(...) __VA_OPT__(EXPAND(AUTO_NAMED_PROPERTIES_HELPER(CLASS, __VA_ARGS__)))
+#define AUTO_NAMED_PROPERTIES_HELPER(className, v, ...) \
+    SerializerProperty(#v, &className::v) __VA_OPT__(COMMA AUTO_NAMED_PROPERTIES_AGAIN PARENS (className, __VA_ARGS__))
+#define AUTO_NAMED_PROPERTIES_AGAIN() AUTO_NAMED_PROPERTIES_HELPER
+
+#define CUSTOM_NAMED_PROPERTIES(...) __VA_OPT__(EXPAND(CUSTOM_NAMED_PROPERTIES_HELPER(__VA_ARGS__)))
+#define CUSTOM_NAMED_PROPERTIES_HELPER(n, v, ...) \
+    SerializerProperty(n, &CLASS::v) __VA_OPT__(COMMA CUSTOM_NAMED_PROPERTIES_AGAIN PARENS (__VA_ARGS__))
+#define CUSTOM_NAMED_PROPERTIES_AGAIN() CUSTOM_NAMED_PROPERTIES_HELPER
+
+#define QUICK_AUTO_NAMED_PROPERTIES(CLASS, ...) \
+    PROPERTIES_BEGIN \
+    __VA_OPT__(EXPAND(AUTO_NAMED_PROPERTIES_HELPER(CLASS, __VA_ARGS__))) \
+    PROPERTIES_END
+
+    inline QJsonValue ToJson(const bool &v) {
+        return QJsonValue(v);
     }
-    return r;
-}
 
-template<class T>
-QJsonObject ToJson(const std::map<std::string, T> &v) {
-    QJsonObject r;
-    for (const auto &[k, v_] : v) {
-        r[k.c_str()] = ToJson(v_);
+    template<class T> requires (std::is_integral_v<T> || std::is_enum_v<T>)
+    inline QJsonValue ToJson(const T &v) {
+        return QJsonValue(static_cast<qint64>(v));
     }
-    return r;
-}
 
-void FromJson(const QJsonValue &json, bool &out) {
-    out = json.toBool();
-}
+    template<class T> requires (std::is_floating_point_v<T>)
+    inline QJsonValue ToJson(const T &v) {
+        return QJsonValue(static_cast<double>(v));
+    }
 
-template<class T> requires (std::is_integral_v<T> || std::is_enum_v<T>)
-void FromJson(const QJsonValue &json, T &out) {
-    out = static_cast<T>(json.toInteger());
-}
+    inline QJsonValue ToJson(const std::string &v) {
+        return QJsonValue(v.c_str());
+    }
 
-template<class T> requires (std::is_floating_point_v<T>)
-void FromJson(const QJsonValue &json, T &out) {
-    out = static_cast<T>(json.toDouble());
-}
+    template<class T>
+    QJsonArray ToJson(const std::vector<T> &v) {
+        QJsonArray r;
+        for (const auto &v_ : v) {
+            r.push_back(ToJson(v_));
+        }
+        return r;
+    }
 
-void FromJson(const QJsonValue &json, std::string &out) {
-    out = json.toString().toStdString();
-}
+    template<class T>
+    QJsonObject ToJson(const std::map<std::string, T> &v) {
+        QJsonObject r;
+        for (const auto &[k, v_] : v) {
+            r[k.c_str()] = ToJson(v_);
+        }
+        return r;
+    }
 
-template<class T>
-void FromJson(const QJsonValue &json, std::vector<T> &out) {
-    if (json.isArray()) {
-        auto array = json.toArray();
-        out.clear();
-        out.resize(array.size());
-        auto it = out.begin();
-        for (const auto &v : array) {
-            FromJson(v, *it);
-            it++;
+    inline void FromJson(const QJsonValue &json, bool &out) {
+        out = json.toBool();
+    }
+
+    template<class T> requires (std::is_integral_v<T> || std::is_enum_v<T>)
+    inline void FromJson(const QJsonValue &json, T &out) {
+        out = static_cast<T>(json.toInteger());
+    }
+
+    template<class T> requires (std::is_floating_point_v<T>)
+    inline void FromJson(const QJsonValue &json, T &out) {
+        out = static_cast<T>(json.toDouble());
+    }
+
+    inline void FromJson(const QJsonValue &json, std::string &out) {
+        out = json.toString().toStdString();
+    }
+
+    template<class T>
+    void FromJson(const QJsonValue &json, std::vector<T> &out) {
+        if (json.isArray()) {
+            auto array = json.toArray();
+            out.clear();
+            out.resize(array.size());
+            auto it = out.begin();
+            for (const auto &v : array) {
+                FromJson(v, *it);
+                it++;
+            }
         }
     }
-}
 
-template<class T>
-void FromJson(const QJsonValue &json, std::map<std::string, T> &out) {
-    if (json.isObject()) {
-        auto object = json.toObject();
-        out.clear();
-        for (auto it = object.begin(); it != object.end(); it++) {
-            T v_;
-            FromJson(it.value(), v_);
-            out[it.key().toStdString()] = v_;
+    template<class T>
+    void FromJson(const QJsonValue &json, std::map<std::string, T> &out) {
+        if (json.isObject()) {
+            auto object = json.toObject();
+            out.clear();
+            for (auto it = object.begin(); it != object.end(); it++) {
+                T v_;
+                FromJson(it.value(), v_);
+                out[it.key().toStdString()] = v_;
+            }
         }
     }
-}
 
-template <class T, T... S, class F>
-constexpr void ForSequence(std::integer_sequence<T, S...>, F&& f) {
-    (static_cast<void>(f(std::integral_constant<T, S>{})), ...);
-}
+    template <class T, T... S, class F>
+    constexpr void ForSequence(std::integer_sequence<T, S...>, F&& f) {
+        (static_cast<void>(f(std::integral_constant<T, S>{})), ...);
+    }
 
-template<class T>
-QJsonObject ToJson(const T &v) {
-    constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
-    QJsonObject r;
+    template<class T>
+    QJsonObject ToJson(const T &v) {
+        constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
+        QJsonObject r;
 
-    ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
-        constexpr auto property = std::get<j>(T::properties);
+        ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
+            constexpr auto property = std::get<j>(T::properties);
 
-        r[property.name] = ToJson(v.*(property.member));
-    });
+            r[property.name] = ToJson(v.*(property.member));
+        });
 
-    return r;
-}
+        return r;
+    }
 
-template<class T>
-void FromJson(const QJsonValue &json, T &out) {
-    constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
+    template<class T>
+    void FromJson(const QJsonValue &json, T &out) {
+        constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
 
-    ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
-        constexpr auto property = std::get<j>(T::properties);
-        if (const QJsonValue v = json[property.name]; !v.isUndefined()) {
-            FromJson(v, out.*(property.member));
-        }
-    });
-}
+        ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
+            constexpr auto property = std::get<j>(T::properties);
+            if (const QJsonValue v = json[property.name]; !v.isUndefined()) {
+                FromJson(v, out.*(property.member));
+            }
+        });
+    }
 }
