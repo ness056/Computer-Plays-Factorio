@@ -40,19 +40,17 @@
  * 
  *  private:
  *      // also included but with a modified name in order to remove the m_
- *      bool m_k;   // will be "k": true/false in JSON
+ *      bool m_k;   // will become "k": true/false in JSON
  *      int m_l;
  *  
- *      #define CLASS Test<T>
- *      PROPERTIES_BEGIN
- *          AUTO_NAMED_PROPERTIES(a, b, c, d, e, f, g)
- *          CUSTOM_NAMED_PROPERTIES("k", somethingWeDontWant_k, "l", somethingWeDontWant_l)
- *      PROPERTIES_END
- *      #undef CLASS
+ *      SERIALIZABLE_BEGIN
+ *          AUTO_NAMED_PROPERTIES(Test<T>, a, b, c, d, e, f, g),    // !!!! Do NOT forget the comma at the end !!!!
+ *          CUSTOM_NAMED_PROPERTIES(Test<T>, "k", somethingWeDontWant_k, "l", somethingWeDontWant_l)
+ *      SERIALIZABLE_END
  * 
  *      // Additionally, in case all the members we want to include can be named automatically,
- *      // we can use the following macro instead of the 6 lines above:
- *      QUICK_AUTO_NAMED_PROPERTIES(a, b, c, d, e, f, g)
+ *      // we can use the following macro instead of the 4 lines above:
+ *      SERIALIZABLE(a, b, c, d, e, f, g)
  *  };
  * 
  *  int main() {
@@ -76,15 +74,15 @@ namespace ComputerPlaysFactorio {
         T Class:: *member;
     };
 
-#define PROPERTIES_BEGIN \
-private:                                                    \
-    template<class T>                                       \
-    friend void FromJson(const QJsonValue &json, T &out);   \
-    template<class T>                                       \
-    friend QJsonObject ToJson(const T &v);                  \
-    constexpr static auto properties = std::make_tuple(
+#define SERIALIZABLE_BEGIN \
+private:\
+    template<class T>\
+    friend QJsonObject ToJson(const T &v);\
+    template<class T>\
+    friend void FromJson(const QJsonValue &json, T &out);\
+    constexpr static auto s_properties = std::make_tuple(
 
-#define PROPERTIES_END );
+#define SERIALIZABLE_END );
 
 #define PARENS ()
 #define COMMA ,
@@ -95,20 +93,25 @@ private:                                                    \
 #define EXPAND2(...) EXPAND1(EXPAND1(EXPAND1(EXPAND1(__VA_ARGS__))))
 #define EXPAND1(...) __VA_ARGS__
 
-#define AUTO_NAMED_PROPERTIES(...) __VA_OPT__(EXPAND(AUTO_NAMED_PROPERTIES_HELPER(CLASS, __VA_ARGS__)))
+#define AUTO_NAMED_PROPERTIES(className, ...) __VA_OPT__(EXPAND(AUTO_NAMED_PROPERTIES_HELPER(className, __VA_ARGS__)))
 #define AUTO_NAMED_PROPERTIES_HELPER(className, v, ...) \
     SerializerProperty(#v, &className::v) __VA_OPT__(COMMA AUTO_NAMED_PROPERTIES_AGAIN PARENS (className, __VA_ARGS__))
 #define AUTO_NAMED_PROPERTIES_AGAIN() AUTO_NAMED_PROPERTIES_HELPER
 
-#define CUSTOM_NAMED_PROPERTIES(...) __VA_OPT__(EXPAND(CUSTOM_NAMED_PROPERTIES_HELPER(__VA_ARGS__)))
-#define CUSTOM_NAMED_PROPERTIES_HELPER(n, v, ...) \
-    SerializerProperty(n, &CLASS::v) __VA_OPT__(COMMA CUSTOM_NAMED_PROPERTIES_AGAIN PARENS (__VA_ARGS__))
+#define CUSTOM_NAMED_PROPERTIES(className, ...) __VA_OPT__(EXPAND(CUSTOM_NAMED_PROPERTIES_HELPER(className, __VA_ARGS__)))
+#define CUSTOM_NAMED_PROPERTIES_HELPER(className, n, v, ...) \
+    SerializerProperty(n, &className::v) __VA_OPT__(COMMA CUSTOM_NAMED_PROPERTIES_AGAIN PARENS (className, __VA_ARGS__))
 #define CUSTOM_NAMED_PROPERTIES_AGAIN() CUSTOM_NAMED_PROPERTIES_HELPER
 
-#define QUICK_AUTO_NAMED_PROPERTIES(CLASS, ...) \
-    PROPERTIES_BEGIN \
-    __VA_OPT__(EXPAND(AUTO_NAMED_PROPERTIES_HELPER(CLASS, __VA_ARGS__))) \
-    PROPERTIES_END
+#define SERIALIZABLE(className, ...) \
+    SERIALIZABLE_BEGIN \
+    AUTO_NAMED_PROPERTIES(className, __VA_ARGS__) \
+    SERIALIZABLE_END
+
+#define SERIALIZABLE_CUSTOM_NAMES(className, ...) \
+    SERIALIZABLE_BEGIN \
+    CUSTOM_NAMED_PROPERTIES(className, __VA_ARGS__) \
+    SERIALIZABLE_END
 
     inline QJsonValue ToJson(const bool &v) {
         return QJsonValue(v);
@@ -192,17 +195,17 @@ private:                                                    \
     }
 
     template <class T, T... S, class F>
-    constexpr void ForSequence(std::integer_sequence<T, S...>, F&& f) {
+    constexpr void ForProperties(std::integer_sequence<T, S...>, F&& f) {
         (static_cast<void>(f(std::integral_constant<T, S>{})), ...);
     }
 
     template<class T>
     QJsonObject ToJson(const T &v) {
-        constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
+        constexpr auto nbProperties = std::tuple_size<decltype(T::s_properties)>::value;
         QJsonObject r;
 
-        ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
-            constexpr auto property = std::get<j>(T::properties);
+        ForProperties(std::make_index_sequence<nbProperties>{}, [&](auto j) {
+            constexpr auto property = std::get<j>(T::s_properties);
 
             r[property.name] = ToJson(v.*(property.member));
         });
@@ -212,10 +215,10 @@ private:                                                    \
 
     template<class T>
     void FromJson(const QJsonValue &json, T &out) {
-        constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
+        constexpr auto nbProperties = std::tuple_size<decltype(T::s_properties)>::value;
 
-        ForSequence(std::make_index_sequence<nbProperties>{}, [&](auto j) {
-            constexpr auto property = std::get<j>(T::properties);
+        ForProperties(std::make_index_sequence<nbProperties>{}, [&](auto j) {
+            constexpr auto property = std::get<j>(T::s_properties);
             if (const QJsonValue v = json[property.name]; !v.isUndefined()) {
                 FromJson(v, out.*(property.member));
             }

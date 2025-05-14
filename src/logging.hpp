@@ -43,8 +43,8 @@ namespace ComputerPlaysFactorio {
     LoggingStream &operator<<(LoggingStream &ls, T val) {
         if (ls.newLine) {
             auto time = std::chrono::high_resolution_clock::now() - g_startTime;
-            float sec = (float)time.count() / 1e9;
-            int spaces = 4 - std::floor(std::log10(sec));
+            double sec = time.count() / 1e9;
+            int spaces = 4 - (int)std::floor(std::log10(sec));
             std::stringstream ss;
             ss << std::string(std::max(0, spaces), ' ') << std::fixed << std::setprecision(3) << sec << ls.name;
 

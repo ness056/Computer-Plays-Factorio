@@ -3,13 +3,19 @@
 #include <QProcess>
 #include <QString>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <functional>
 #include <thread>
 #include <mutex>
 #include <map>
+#include <set>
 #include <filesystem>
-#include <deque>
+#include <algorithm>
+#include <format>
+#include <cassert>
+#include <cstring>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -23,6 +29,12 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <unistd.h>
+#define INVALID_SOCKET -1
+#define SOCKET int
+#define SOCKADDR_IN sockaddr_in
+#define SOCKADDR sockaddr
+#define InetPtonA inet_pton
+#define closesocket close
 #else
 #error "Only Windows and Linux are supported for now"
 #endif
@@ -30,7 +42,7 @@
 #include "serializer.hpp"
 #include "logging.hpp"
 #include "thread.hpp"
-#include "instruction.hpp"
+#include "utils.hpp"
 
 /**
  *      Protocol used to communicate with Factorio:
@@ -60,13 +72,11 @@ namespace ComputerPlaysFactorio {
         RCON_RESPONSE_VALUE = 0
     };
 
-    template<class T>
-    struct Request {
+    struct RequestDataless {
         uint32_t id;
         std::string name;
-        T data;
 
-        QUICK_AUTO_NAMED_PROPERTIES(Request<T>, id, name, data)
+        SERIALIZABLE(RequestDataless, id, name)
     };
 
     struct ResponseDataless {
@@ -74,17 +84,14 @@ namespace ComputerPlaysFactorio {
         bool success;
         std::string message;
 
-        QUICK_AUTO_NAMED_PROPERTIES(ResponseDataless, id, success, message)
+        SERIALIZABLE(ResponseDataless, id, success, message)
     };
 
     template<class T>
-    struct Response {
-        uint32_t id;
-        bool success;
-        std::string message;
+    struct Response : public ResponseDataless {
         T data;
 
-        QUICK_AUTO_NAMED_PROPERTIES(Response<T>, id, success, message, data)
+        SERIALIZABLE(Response<T>, id, success, message, data)
     };
 
     struct EventDataless {
@@ -93,9 +100,7 @@ namespace ComputerPlaysFactorio {
     };
 
     template<class T>
-    struct Event {
-        uint32_t id;
-        std::string name;
+    struct Event : public EventDataless {
         T data;
     };
 
@@ -114,10 +119,13 @@ namespace ComputerPlaysFactorio {
             s_factorioPath = path;
         }
         static bool IsFactorioPathValid(const std::string &path, std::string &message);
+        static void StopAll();
+        static void JoinAll();
 
-        FactorioInstance(const std::string &name, Type type, bool defaultStdoutListener = true);
+        FactorioInstance(Type type, bool defaultStdoutListener = true);
         // Blocks the thread to wait for Factorio to stop !
         inline ~FactorioInstance() {
+            s_instances.erase(this);
             Stop();
             Join();
         }
@@ -128,43 +136,38 @@ namespace ComputerPlaysFactorio {
         void operator=(const FactorioInstance&&)   = delete;
 
         // Returns true if Factorio is running
-        inline bool Running() {
+        inline bool Running() const {
             return m_process.state() != QProcess::ProcessState::NotRunning;
         }
-        bool Start(std::string *message = nullptr);
-        bool Stop();
+        bool Start(uint32_t seed, std::string *message = nullptr);
+        void Stop();
         inline bool Join(int ms = -1) {
             return m_process.waitForFinished(ms);
         }
 
-        bool SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND);
+        bool SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND) const;
+
         template<class T>
         using RequestCallback = std::function<void(FactorioInstance&, const Response<T>&)>;
-        template<class T, class R=int>
-        bool SendRequest(const std::string &name, const T &data, RequestCallback<R> callback = nullptr);
+        using RequestDatalessCallback = std::function<void(FactorioInstance&, const ResponseDataless&)>;
 
-        bool QueueWalk(double x, double y);
-        // bool QueueCraft();
-        // bool QueueCancel();
-        // bool QueueTech();
-        // bool QueuePickup();
-        // bool QueueDrop();
-        // bool QueueMine();
-        // bool QueueShoot();
-        // bool QueueUse();
-        // bool QueueEquip();
-        // bool QueueTake();
-        // bool QueuePut();
-        // bool QueueBuild();
-        // bool QueueRecipe();
-        // bool QueueLimit();
-        // bool QueueFilter();
-        // bool QueuePriority();
-        // bool QueueLaunch();
-        // bool QueueRotate();
+        bool SendRequest(const std::string &name) const;
+        template<class T>
+        bool SendRequestData(const std::string &name, const T &data) const;
+        template<class R>
+        bool SendRequestRes(const std::string &name, RequestCallback<R> callback);
+        template<class T, class R>
+        bool SendRequestDataRes(const std::string &name, const T &data, RequestCallback<R> callback);
+        bool SendRequestResDL(const std::string &name, RequestDatalessCallback callback);
+        template<class T>
+        bool SendRequestDataResDL(const std::string &name, const T &data, RequestDatalessCallback callback);
 
-        const std::string name;
-        const Type type;
+        inline bool Broadcast(const std::string &msg) const { return SendRequestData("Broadcast", msg); }
+        inline bool SetGameSpeed(float ticks) const { return SendRequestData("GameSpeed", ticks); }
+        inline bool PauseToggle() const { return SendRequest("PauseToggle"); }
+        inline bool Save(const std::string &name) const { return SendRequestData("Save", name); }
+
+        const Type instanceType;
 
         bool printStdout = false;
 
@@ -180,46 +183,52 @@ namespace ComputerPlaysFactorio {
     private:
         static bool s_initStatic;
 
+        static inline std::atomic<uint32_t> s_id = 0;
+        const uint32_t m_id = s_id++;
+        static inline std::set<FactorioInstance*> s_instances;
+
         static std::string s_factorioPath;
-        static std::string s_luaPath;
 
         QProcess m_process;
         std::mutex m_mutex;
         std::mutex m_stdoutListenerMutex;
 
-        static inline uint32_t s_requestIndex = 0;
-        std::map<int32_t, std::function<void(const QJsonObject &data)>> m_pendingRequests;
-        std::deque<Instruction> m_instructions;
+        inline std::filesystem::path GetInstanceTempPath() { return GetTempDir() / ("data" + std::to_string(m_id)); }
+        inline std::filesystem::path GetConfigPath() { return GetInstanceTempPath() / "config.ini"; }
+        void EditConfig(const std::string &category, const std::string &name, const std::string &value);
+
+        std::map<uint32_t, std::function<void(const QJsonObject &data)>> m_pendingRequests;
+
+        bool SendRequestPrivate(std::string name, uint32_t *id = nullptr) const;
+        template<class T>
+        bool SendRequestPrivate(std::string name, const T &data, uint32_t *id = nullptr) const;
+        template<class R>
+        void AddResponse(uint32_t id, RequestCallback<R> callback);
+        void AddResponseDataless(uint32_t id, RequestDatalessCallback callback);
 
         void StartRCON();
         void CloseRCON();
-        bool ReadPacket(int32_t &id, int32_t &type, char body[4096]);
-        std::string m_rconAddr = "127.0.0.1";
-        std::string m_rconPass = "pass";
+        bool ReadPacket(int32_t &id, int32_t &type, char body[4096]) const;
+        const std::string m_rconAddr = "127.0.0.1";
         uint16_t m_rconPort;
         bool m_rconConnected = false;
-    #ifdef _WIN32
         SOCKET m_rconSocket = INVALID_SOCKET;
-    #elif defined(__linux__)
-        int m_rconSocket = -1;
-    #else
-    #error "Only Windows and Linux are supported for now"
-    #endif
     };
 
-    template<class T, class R>
-    bool FactorioInstance::SendRequest(const std::string &name, const T &data, RequestCallback<R> callback) {
-        const uint32_t id = s_requestIndex++;
+    template <class T>
+    bool FactorioInstance::SendRequestPrivate(std::string name, const T &data, uint32_t *id) const {
+        RequestDataless r;
+        r.id = s_id++;
+        r.name = name;
+        if (id) *id = r.id;
+        auto json = ToJson(r);
+        json["data"] = ToJson(data);
+        return SendRCON("/request " + QJsonDocument(json).toJson(QJsonDocument::Compact).toStdString());
+    }
 
-        Request<T> request;
-        request.id = id;
-        request.name = name;
-        request.data = data;
-        auto json = ToJson(request);
-
-        if (!SendRCON("/request " + QJsonDocument(json).toJson(QJsonDocument::Compact).toStdString())) return false;
-        
-        if (callback == nullptr) return true;
+    template<class R>
+    void FactorioInstance::AddResponse(uint32_t id, RequestCallback<R> callback) {
+        assert(callback);
         m_pendingRequests[id] = [=, this](const QJsonObject &json) {
             Response<R> data;
             FromJson(json, data);
@@ -227,7 +236,37 @@ namespace ComputerPlaysFactorio {
                 callback(*this, data);
             });
         };
+    }
 
+    template<class T>
+    bool FactorioInstance::SendRequestData(const std::string &name, const T &data) const {
+        return SendRequestPrivate(name, data);
+    }
+
+    template<class R>
+    bool FactorioInstance::SendRequestRes(const std::string &name, RequestCallback<R> callback) {
+        uint32_t id;
+        if (!SendRequestPrivate(name, &id)) return false;
+
+        AddResponse(id, callback);
+        return true;
+    }
+
+    template<class T, class R>
+    bool FactorioInstance::SendRequestDataRes(const std::string &name, const T &data, RequestCallback<R> callback) {
+        uint32_t id;
+        if (!SendRequestPrivate(name, data, &id)) return false;
+
+        AddResponse(id, callback);
+        return true;
+    }
+
+    template<class T>
+    bool FactorioInstance::SendRequestDataResDL(const std::string &name, const T &data, RequestDatalessCallback callback) {
+        uint32_t id;
+        if (!SendRequestPrivate(name, data, &id)) return false;
+
+        AddResponseDataless(id, callback);
         return true;
     }
 }

@@ -2,7 +2,7 @@
 
 #include <QtWidgets>
 
-#include "factorioAPI.hpp"
+#include "playerController.hpp"
 
 namespace ComputerPlaysFactorio {
 
@@ -11,6 +11,7 @@ namespace ComputerPlaysFactorio {
 
     public:
         MainWindow();
+        ~MainWindow();
 
     private slots:
         void SetFactorioPath();
@@ -20,7 +21,7 @@ namespace ComputerPlaysFactorio {
         void About();
 
     private:
-        FactorioInstance m_graphicalInstance;
+        PlayerController m_playerController;
 
         void CreateCentralWidget();
         void CreateActions();

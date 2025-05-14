@@ -2,103 +2,269 @@
 
 #include <string>
 #include <cstdint>
+#include <mutex>
+#include <condition_variable>
 
+#include "factorioAPI.hpp"
 #include "serializer.hpp"
+#include "utils.hpp"
+    
+/**
+ * Instructions are a special type requests that are waitable and mainly used to control
+ *  the player's character. For instance, if you send a Walk instruction and call the wait function
+ *  the thread will be blocked until the player has reached the destination.
+ */
 
 namespace ComputerPlaysFactorio {
+
+    class Instruction {
+    public:
+        virtual constexpr std::string GetName() = 0;
+        virtual bool Send(FactorioInstance&) = 0;
+        bool Wait();
+        virtual void Cancel() {
+            m_waiting = false;
+            Notify(true);
+        }
+
+    protected:
+        Instruction() = default;
+
+        bool Lock();
+        void Notify(bool cancel = false);
+
+        bool m_canceled = false;
+        bool m_waiting = false;
+        mutable std::mutex m_mutex;
+        mutable std::condition_variable m_cond;
+    };
+
+    using CallbackDL = std::function<void(const ResponseDataless&)>;
+
+    template<class T>
+    class InstructionDL : public Instruction {
+    public:
+        bool Send(FactorioInstance &instance) override {
+            if (!Lock()) return false;
     
-    /**
-     * Instructions are a special type requests that is used to control the player's character.
-     * When an instruction is created using QueueSomeInstruction(...), it wont be executed immediately,
-     *  but is instead added into a queue and will be sent when all the previous instructions are done.
-     */
-    struct Instruction {
-        std::string name;
+            return instance.SendRequestDataResDL<T>(GetName(), *(T*)this, [this](FactorioInstance&, const ResponseDataless &res) {
+                if (!res.success && m_callback) m_callback(res);
+                Notify();
+            });
+        }
 
-        double x, y;
-        uint64_t amount;
-        std::string str, item;
-        uint8_t inventory, orientation;
-        // bit 0: Force, 1: Super force
-        uint8_t other;
+    protected:
+        InstructionDL(CallbackDL callback) : m_callback(callback) {};
 
-        QUICK_AUTO_NAMED_PROPERTIES(Instruction, x, y, amount, str, item, inventory, orientation, other)
+        const CallbackDL m_callback;
     };
 
-    struct WalkResponse {
+    template<class R>
+    using CallbackR = std::function<void(const Response<R>&)>;
 
+    template<class T, class R>
+    class InstructionR : public Instruction {
+    public:
+        bool Send(FactorioInstance &instance) override {
+            if (!Lock()) return false;
+    
+            return instance.SendRequestDataRes<T, R>(GetName(), *(T*)this, [this](FactorioInstance&, const Response<R> &res) {
+                if (!res.success && m_callback) m_callback(res);
+                Notify();
+            });
+        }
+
+    protected:
+        InstructionR(CallbackR<R> callback) : m_callback(callback) {}
+
+        const CallbackR<R> m_callback;
     };
 
-    struct CraftResponse {
+    struct PathfinderWaypoint {
+        MapPosition pos;
+        bool needsDestroyToReach;
 
+        SERIALIZABLE_CUSTOM_NAMES(PathfinderWaypoint, "position", pos, "needs_destroy_to_reach", needsDestroyToReach);
     };
 
-    struct CancelResponse {
+    using Path = std::vector<PathfinderWaypoint>;
 
+    class InstructionRequestPath : public InstructionR<InstructionRequestPath, Path> {
+    public:
+        InstructionRequestPath(MapPosition start_, MapPosition goal_, CallbackR<Path> callback) :
+            InstructionR(callback), start(start_), goal(goal_) {}
+        inline constexpr std::string GetName() override { return "RequestPath"; }
+
+        MapPosition start;
+        MapPosition goal;
+
+        SERIALIZABLE(InstructionRequestPath, start, goal);
     };
 
-    struct TechResponse {
+    class InstructionWalk : public InstructionDL<InstructionWalk> {
+    public:
+        InstructionWalk(FactorioInstance &instance, MapPosition start_, MapPosition goal_, CallbackDL callback)
+            : InstructionDL(callback), m_requestPath(start_, goal_, m_requestPathCallback) {
+            SendRequestPath(instance);
+        }
+        void Cancel() override {
+            m_requestPath.Cancel();
+            Instruction::Cancel();
+        }
 
+        inline constexpr std::string GetName() override { return "Walk"; }
+
+        bool Send(FactorioInstance &instance) override {
+            g_info << "Send walk" << std::endl;
+            if (!m_requestPath.Wait() || !Lock()) return false;
+    
+            return instance.SendRequestDataResDL("Walk", m_path, [this](FactorioInstance&, const ResponseDataless &res) {
+                if (!res.success && m_callback) m_callback(res);
+                Notify();
+            });
+        }
+        inline bool SendRequestPath(FactorioInstance &i) { return m_requestPath.Send(i); }
+
+    private:
+        CallbackR<Path> m_requestPathCallback = [this](const Response<Path> &res) {
+            g_info << res.data.size() << std::endl;
+            if (res.success == false) {
+                if (m_callback) m_callback(res);
+                m_canceled = true;
+            }
+            else m_path = res.data;
+        };
+
+        InstructionRequestPath m_requestPath;
+        Path m_path;
+
+        SERIALIZABLE_CUSTOM_NAMES(InstructionWalk, "path", m_path)
     };
 
-    struct PickupResponse {
+    // struct ResponseCraft {
+        
+    // };
 
-    };
+    // class InstructionCraft : public InstructionDL<InstructionCraft> {
+    // };
 
-    struct DropResponse {
+    // struct ResponseCancel {
+        
+    // };
 
-    };
+    // class InstructionCancel : public InstructionDL<InstructionCancel> {
+    // };
 
-    struct MineResponse {
+    // struct ResponseTech {
+        
+    // };
 
-    };
+    // class InstructionTech : public InstructionDL<InstructionTech> {
+    // };
 
-    struct ShootResponse {
+    // struct ResponsePickup {
+        
+    // };
 
-    };
+    // class InstructionPickup : public InstructionDL<InstructionPickup> {
+    // };
 
-    struct UseResponse {
+    // struct ResponseDrop {
+        
+    // };
 
-    };
+    // class InstructionDrop : public InstructionDL<InstructionDrop> {
+    // };
 
-    struct EquipResponse {
+    // struct ResponseMine {
+        
+    // };
 
-    };
+    // class InstructionMine : public InstructionDL<InstructionMine> {
+    // };
 
-    struct TakeResponse {
+    // struct ResponseShoot {
+        
+    // };
 
-    };
+    // class InstructionShoot : public InstructionDL<InstructionShoot> {
+    // };
 
-    struct PutResponse {
+    // struct ResponseUse {
+        
+    // };
 
-    };
+    // class InstructionUse : public InstructionDL<InstructionUse> {
+    // };
 
-    struct BuildResponse {
+    // struct ResponseEquip {
+        
+    // };
 
-    };
+    // class InstructionEquip : public InstructionDL<InstructionEquip> {
+    // };
 
-    struct RecipeResponse {
+    // struct ResponseTake {
+        
+    // };
 
-    };
+    // class InstructionTake : public InstructionDL<InstructionTake> {
+    // };
 
-    struct LimitResponse {
+    // struct ResponsePut {
+        
+    // };
 
-    };
+    // class InstructionPut : public InstructionDL<InstructionPut> {
+    // };
 
-    struct FilterResponse {
+    // struct ResponseBuild {
+        
+    // };
 
-    };
+    // class InstructionBuild : public InstructionDL<InstructionBuild> {
+    // };
 
-    struct PriorityResponse {
+    // struct ResponseRecipe {
+        
+    // };
 
-    };
+    // class InstructionRecipe : public InstructionDL<InstructionRecipe> {
+    // };
 
-    struct LaunchResponse {
+    // struct ResponseLimit {
+        
+    // };
 
-    };
+    // class InstructionLimit : public InstructionDL<InstructionLimit> {
+    // };
 
-    struct RotateResponse {
+    // struct ResponseFilter {
+        
+    // };
 
-    };
+    // class InstructionFilter : public InstructionDL<InstructionFilter> {
+    // };
+
+    // struct ResponsePriority {
+        
+    // };
+
+    // class InstructionPriority : public InstructionDL<InstructionPriority> {
+    // };
+
+    // struct ResponseLaunch {
+        
+    // };
+
+    // class InstructionLaunch : public InstructionDL<InstructionLaunch> {
+    // };
+
+    // struct ResponseRotate {
+        
+    // };
+
+    // class InstructionRotate : public InstructionDL<InstructionRotate> {
+    // };
 
 }

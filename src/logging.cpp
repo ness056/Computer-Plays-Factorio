@@ -1,4 +1,5 @@
 #include "logging.hpp"
+#include "utils.hpp"
 
 namespace ComputerPlaysFactorio {
 
@@ -10,7 +11,7 @@ namespace ComputerPlaysFactorio {
 
     LoggingStream::LoggingStream(const std::string &n) : name(" " + n + " ") {
         if (!file.is_open()) {
-            file.open("computer-plays-factorio.log");
+            file.open(GetTempDir() / "computer-plays-factorio.log");
         }
     }
 }

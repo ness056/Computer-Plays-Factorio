@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.30)
 project(computer_plays_factorio LANGUAGES CXX)
 
-set(luaSrc ${CMAKE_SOURCE_DIR}/lua)
-set(luaDst ${CMAKE_BINARY_DIR}/lua)
+set(dataSrc ${CMAKE_SOURCE_DIR}/data)
+set(dataDst ${CMAKE_BINARY_DIR})
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
@@ -12,11 +12,16 @@ qt_add_executable(${PROJECT_NAME}
     src/main.cpp
     src/gui.hpp
     src/gui.cpp
+    src/playerController.hpp
+    src/playerController.cpp
     src/factorioAPI.hpp
     src/factorioAPI.cpp
     src/instruction.hpp
+    src/instruction.cpp
     src/thread.hpp
     src/thread.cpp
+    src/utils.hpp
+    src/utils.cpp
     src/logging.hpp
     src/logging.cpp
     src/serializer.hpp
@@ -52,13 +57,17 @@ qt_generate_deploy_app_script(
 )
 install(SCRIPT ${deploy_script})
 
-if (UNIX)
-    add_custom_command(
-        TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink ${luaSrc} ${luaDst}
-    )
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if(UNIX)
+        add_custom_command(
+            TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_symlink ${dataSrc} ${dataDst}/data
+        )
+    else()
+        file(TO_NATIVE_PATH "${dataDst}/data" _dstDir)
+        file(TO_NATIVE_PATH "${dataSrc}" _srcDir)
+        execute_process(COMMAND cmd.exe /c mklink /J "${_dstDir}" "${_srcDir}")
+    endif()
 else()
-    file(TO_NATIVE_PATH "${luaDst}" _dstDir)
-    file(TO_NATIVE_PATH "${luaSrc}" _srcDir)
-    execute_process(COMMAND cmd.exe /c mklink /J "${_dstDir}" "${_srcDir}")
+    file(COPY ${dataSrc} DESTINATION ${dataDst})
 endif()

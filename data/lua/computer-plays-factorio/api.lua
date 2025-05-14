@@ -34,7 +34,7 @@ end
 
 ---@generic T
 ---@param request Request<T>
----@param data table
+---@param data any
 function API.Success(request, data)
     local d = helpers.table_to_json({
         id = request.id,
@@ -42,6 +42,7 @@ function API.Success(request, data)
         data = data
     })
     print("response" .. d:len() .. " " .. d)
+    log(d)
 end
 
 ---@generic T
@@ -54,6 +55,7 @@ function API.Failed(request, message)
         message = message
     })
     print("response" .. d:len() .. " " .. d)
+    log(d)
 end
 
 commands.add_command("request", nil, function (data)

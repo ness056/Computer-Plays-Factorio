@@ -2,7 +2,7 @@
 
 namespace ComputerPlaysFactorio {
 
-    MainWindow::MainWindow() : m_graphicalInstance("Graphical", FactorioInstance::HEADLESS) {
+    MainWindow::MainWindow() {
         setWindowTitle("Computer Plays Factorio");
         setMinimumSize(200, 200);
         resize(800, 600);
@@ -11,31 +11,26 @@ namespace ComputerPlaysFactorio {
         CreateActions();
         CreateMenus();
 
-        m_graphicalInstance.printStdout = true;
-        connect(&m_graphicalInstance, &FactorioInstance::Started, [this]() {
+        connect(&m_playerController.GetFactorioInstance(), &FactorioInstance::Started, [this]() {
             m_actToggleFactorio->setText("Stop Factorio");
         });
 
-        connect(&m_graphicalInstance, &FactorioInstance::Terminated, [this]() {
+        connect(&m_playerController.GetFactorioInstance(), &FactorioInstance::Terminated, [this]() {
             m_actToggleFactorio->setText("Start Factorio");
         });
     }
 
-    void MainWindow::CreateCentralWidget() {
-        QPushButton *buttonTest = new QPushButton("Test");
-        connect(buttonTest, &QPushButton::clicked, [this]() {
-            m_graphicalInstance.SendRequest("test", 12093);
-        });
+    MainWindow::~MainWindow() {
+        FactorioInstance::StopAll();
+        FactorioInstance::JoinAll();
+        ClearTempDirectory();
+    }
 
-        QPushButton *buttonTest2 = new QPushButton("Test2");
-        connect(buttonTest2, &QPushButton::clicked, [this]() {
-            auto start = std::chrono::high_resolution_clock::now().time_since_epoch().count()/1e3;
-            m_graphicalInstance.SendRequest<int, int>("test", 23323, [start](FactorioInstance&, const Response<int> &) {
-                auto end = std::chrono::high_resolution_clock::now().time_since_epoch().count()/1e3;
-                g_info << "data: " << d << "\n";
-                g_info << "start: " << start << "ns\n";
-                g_info << "end: " << end << "ns\n";
-                g_info << "duration: " << end - start << "ns" << std::endl;
+    void MainWindow::CreateCentralWidget() {
+        QPushButton *buttonTest = new QPushButton("Walk");
+        connect(buttonTest, &QPushButton::clicked, [this]() {
+            m_playerController.QueueWalk(MapPosition(5, 5), [](const ResponseDataless&) {
+                g_info << "Walk done" << std::endl;
             });
         });
         
@@ -50,7 +45,6 @@ namespace ComputerPlaysFactorio {
 
         QHBoxLayout *layout = new QHBoxLayout;
         layout->addWidget(buttonTest);
-        layout->addWidget(buttonTest2);
         layout->addWidget(m_tabWidget);
 
         QWidget *widget = new QWidget;
@@ -116,11 +110,11 @@ namespace ComputerPlaysFactorio {
     }
 
     void MainWindow::ToggleFactorio() {
-        if (m_graphicalInstance.Running()) {
-            m_graphicalInstance.Stop();
+        if (m_playerController.GetFactorioInstance().Running()) {
+            m_playerController.Stop();
         } else {
             std::string message;
-            if (!m_graphicalInstance.Start(&message)) {
+            if (!m_playerController.Start(0, &message)) {
                 QMessageBox msgBox(QMessageBox::Warning, "Could not start Factorio", QString::fromStdString(message));
                 msgBox.exec();
             }
