@@ -11,7 +11,7 @@ local initHandlers = {}
 local nthTickHandlers = {}
 
 local function ControlStageCheck()
-    if game or data then error("You can only register event handlers during the control life cycle") end
+    if game or json then error("You can only register event handlers during the control life cycle") end
 end
 
 script.on_init(function ()

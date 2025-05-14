@@ -15,7 +15,7 @@ API.RequestName = {
 ---@param handler RequestHandler
 function API.AddRequestHandler(requestName, handler)
     assert(requestName, handler)
-    if game or data then error("You can only register request handlers during the control life cycle") end
+    if game or json then error("You can only register request handlers during the control life cycle") end
 
     if requestHandlers[requestName] ~= nil then
         error("A request handler for the request name " .. requestName .. " has already been registered")
