@@ -11,17 +11,23 @@ API.RequestName = {
     ["TEST_REQUEST"] = 0
 }
 
----@param requestName string
+---@param requestName string | string[]
 ---@param handler RequestHandler
 function API.AddRequestHandler(requestName, handler)
     assert(requestName, handler)
-    if game or json then error("You can only register request handlers during the control life cycle") end
+    if game or data then error("You can only register request handlers during the control life cycle") end
 
-    if requestHandlers[requestName] ~= nil then
-        error("A request handler for the request name " .. requestName .. " has already been registered")
+    if type(requestName) == "table" then
+        for i, n in ipairs(requestName) do
+            API.AddRequestHandler(n, handler)
+        end
+    else
+        if requestHandlers[requestName] ~= nil then
+            error("A request handler for the request name " .. requestName .. " has already been registered")
+        end
+        requestHandlers[requestName] = handler
     end
 
-    requestHandlers[requestName] = handler
 end
 
 ---@param requestName string

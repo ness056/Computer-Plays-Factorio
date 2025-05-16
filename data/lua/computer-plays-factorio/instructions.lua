@@ -1,9 +1,14 @@
 local API = require("api")
 local Event = require("event")
+local Math2d = require("math2d")
+local Vector = Math2d.Vector2d
+local Area = Math2d.Area
 
 Event.OnInit(function ()
     ---@type Request<{ start: MapPosition.0, goal: MapPosition.0 }>[]
     storage.pathRequests = {}
+    ---@type Request<any>
+    storage.instruction = nil
 end)
 
 ---@param request Request<{ start: MapPosition.0, goal: MapPosition.0 }>
@@ -64,10 +69,9 @@ local function EvaluatePath()
 
     local path = storage.walkRequest.data
     local waypoint = path[storage.currentWaypoint]
-    local x = waypoint.position.x - player.position.x
-    local y = waypoint.position.y - player.position.y
+    local v = Vector.Sub(waypoint.position, player.position)
 
-    if x*x + y*y <= math.pow(player.character_running_speed, 2) then
+    if v:SquaredLength() <= math.pow(player.character_running_speed, 2) then
         storage.currentWaypoint = storage.currentWaypoint + 1
 
         if storage.currentWaypoint < table_size(path) then
@@ -83,25 +87,25 @@ local function EvaluatePath()
     end
 
     local s = player.character_running_speed
-    if x > s and y > s then
+    if v.x > s and v.y > s then
         walkingState.direction = defines.direction.southeast
 
-    elseif x > s and y < -s then
+    elseif v.x > s and v.y < -s then
         walkingState.direction = defines.direction.northeast
 
-    elseif x < -s and y > s then
+    elseif v.x < -s and v.y > s then
         walkingState.direction = defines.direction.southwest
 
-    elseif x < -s and y < -s then
+    elseif v.x < -s and v.y < -s then
         walkingState.direction = defines.direction.northwest
 
-    elseif x > s and math.abs(y) < s then
+    elseif v.x > s and math.abs(v.y) < s then
         walkingState.direction = defines.direction.east
 
-    elseif x < -s and math.abs(y) < s then
+    elseif v.x < -s and math.abs(v.y) < s then
         walkingState.direction = defines.direction.west
 
-    elseif math.abs(x) < s and y > s then
+    elseif math.abs(v.x) < s and v.y > s then
         walkingState.direction = defines.direction.south
 
     else
@@ -130,3 +134,38 @@ API.AddRequestHandler("Walk", function (request)
 end)
 
 Event.OnEvent(defines.events.on_tick, EvaluatePath)
+
+---@param request Request<{ position: MapPosition.0, item: string, direction: defines.direction }>
+API.AddRequestHandler("Build", function (request)
+    local player = game.get_player(1) --[[@as LuaPlayer]]
+    local data = request.data
+
+    if player.get_item_count(data.item) == 0 then
+        API.Failed(request, "Not enough item")
+        return
+    end
+
+    if not player.can_place_entity{ name = data.item, position = data.position, direction = data.direction } then
+        API.Failed(request, "Cannot place item")
+        return
+    end
+end)
+
+Event.OnEvent(defines.events.on_tick, function (event)
+    if not storage.instruction then return end
+    local i = storage.instruction
+    local player = game.get_player(1) --[[@as LuaPlayer]]
+
+    local distance, area
+    if i.name == "Build" then
+        distance = player.build_distance
+        area = Area.Add(prototypes.entity[i.data.item].collision_box, i.data.position)
+    end
+
+    if i.name == "Mine" or i.name == "Put" or i.name == "Take" then
+        distance = player.reach_distance
+    end
+
+    if distance then
+    end
+end)
