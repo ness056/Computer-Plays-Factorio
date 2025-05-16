@@ -6,11 +6,6 @@ local API = {}
 ---@type table<string, RequestHandler>
 local requestHandlers = {}
 
----@enum RequestName
-API.RequestName = {
-    ["TEST_REQUEST"] = 0
-}
-
 ---@param requestName string | string[]
 ---@param handler RequestHandler
 function API.AddRequestHandler(requestName, handler)
@@ -36,7 +31,18 @@ function API.GetRequestHandler(requestName)
     return assert(requestName and requestHandlers[requestName], "No handler for the request name " .. (requestName and requestName or "nil") .. " has been registered")
 end
 
----@alias Request<T> { id: int, name: RequestName, data: T }
+---@enum RequestErrorCode
+RequestErrorCode = {
+    BUSY = 1,
+    NO_PATH_FOUND = 2,
+    EMPTY_PATH = 3,
+    NOT_ENOUGH_ITEM = 4,
+    NOT_ENOUGH_ROOM = 5,
+    ENTITY_DOESNT_EXIST = 6,
+    NOT_IN_RANGE = 7
+}
+
+---@alias Request<T> { id: int, name: string, data: T }
 
 ---@generic T
 ---@param request Request<T>
@@ -53,12 +59,12 @@ end
 
 ---@generic T
 ---@param request Request<T>
----@param message string
-function API.Failed(request, message)
+---@param error RequestErrorCode
+function API.Failed(request, error)
     local d = helpers.table_to_json({
         id = request.id,
         success = false,
-        message = message
+        error = error
     })
     print("response" .. d:len() .. " " .. d)
     log(d)

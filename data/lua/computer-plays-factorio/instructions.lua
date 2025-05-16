@@ -7,8 +7,14 @@ local Area = Math2d.Area
 Event.OnInit(function ()
     ---@type Request<{ start: MapPosition.0, goal: MapPosition.0 }>[]
     storage.pathRequests = {}
-    ---@type Request<any>
+    ---@type Request<any>?
     storage.instruction = nil
+    ---Used for instruction like build, put, take, etc for which
+    ---the player has a certain range.
+    ---@type Area?
+    storage.instructionArea = nil
+    ---@type number?
+    storage.instructionSqDistance = nil
 end)
 
 ---@param request Request<{ start: MapPosition.0, goal: MapPosition.0 }>
@@ -53,7 +59,7 @@ Event.OnEvent(defines.events.on_script_path_request_finished, function (event)
     if (event.path) then
         API.Success(request, event.path)
     else
-        API.Failed(request, "no path found")
+        API.Failed(request, RequestErrorCode.NO_PATH_FOUND)
     end
 end)
 
@@ -71,7 +77,7 @@ local function EvaluatePath()
     local waypoint = path[storage.currentWaypoint]
     local v = Vector.Sub(waypoint.position, player.position)
 
-    if v:SquaredLength() <= math.pow(player.character_running_speed, 2) then
+    if v:SqLength() <= math.pow(player.character_running_speed, 2) then
         storage.currentWaypoint = storage.currentWaypoint + 1
 
         if storage.currentWaypoint < table_size(path) then
@@ -118,13 +124,13 @@ API.AddRequestHandler("Walk", function (request)
     log(serpent.line(request))
     if storage.walkRequest then
         log("aa")
-        API.Failed(request, "Already walking")
+        API.Failed(request, RequestErrorCode.BUSY)
         return
     end
 
     if table_size(request.data) == 0 then
         log("bb")
-        API.Failed(request, "Empty path")
+        API.Failed(request, RequestErrorCode.EMPTY_PATH)
         return
     end
 
@@ -136,36 +142,44 @@ end)
 Event.OnEvent(defines.events.on_tick, EvaluatePath)
 
 ---@param request Request<{ position: MapPosition.0, item: string, direction: defines.direction }>
-API.AddRequestHandler("Build", function (request)
+local function Build(request)
     local player = game.get_player(1) --[[@as LuaPlayer]]
     local data = request.data
 
     if player.get_item_count(data.item) == 0 then
-        API.Failed(request, "Not enough item")
+        API.Failed(request, RequestErrorCode.NOT_ENOUGH_ITEM)
         return
     end
 
     if not player.can_place_entity{ name = data.item, position = data.position, direction = data.direction } then
-        API.Failed(request, "Cannot place item")
+        API.Failed(request, RequestErrorCode.NOT_ENOUGH_ROOM)
         return
     end
+end
+
+---@param request Request<any>
+API.AddRequestHandler("Build", function (request)
+    if storage.instruction then
+        API.Failed(request, RequestErrorCode.BUSY)
+        return
+    end
+    storage.instruction = request
+
+    local player = game.get_player(1) --[[@as LuaPlayer]]
+    box = prototypes.entity[request.data.item].collision_box
+    storage.instructionArea = Area.Add(box, request.data.position)
+    storage.instructionSqDistance = math.pow(player.build_distance, 2)
 end)
 
 Event.OnEvent(defines.events.on_tick, function (event)
-    if not storage.instruction then return end
     local i = storage.instruction
-    local player = game.get_player(1) --[[@as LuaPlayer]]
+    if not i then return end
 
-    local distance, area
-    if i.name == "Build" then
-        distance = player.build_distance
-        area = Area.Add(prototypes.entity[i.data.item].collision_box, i.data.position)
+    if storage.instructionArea then
+        if storage.instructionArea:SqDistanceTo(i.data.position) > storage.instructionSqDistance then
+            return;
+        end
     end
 
-    if i.name == "Mine" or i.name == "Put" or i.name == "Take" then
-        distance = player.reach_distance
-    end
-
-    if distance then
-    end
+    if i.name == "Build" then Build(i) end
 end)

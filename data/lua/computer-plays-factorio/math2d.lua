@@ -244,13 +244,13 @@ function Vector2d:FromMapToChunk()
 end
 
 ---@return number
-function Vector2d:SquaredLength()
+function Vector2d:SqLength()
     return self.x * self.x + self.y * self.y
 end
 
 ---@return number
 function Vector2d:Length()
-    return math.sqrt(self:SquaredLength())
+    return math.sqrt(self:SqLength())
 end
 
 ---@return number
@@ -260,7 +260,7 @@ end
 
 ---@return boolean
 function Vector2d:IsNormalized()
-    return self:SquaredLength() == 1
+    return self:SqLength() == 1
 end
 
 function Vector2d:Normalize()
@@ -315,9 +315,9 @@ end
 ---@param v1 Vector2d
 ---@param v2 Vector2d
 ---@return number
-function Vector2d.SquaredDistance(v1, v2)
+function Vector2d.SqDistance(v1, v2)
     Vector2d.VectorsCheck(v1, v2)
-    return (v1 - v2):SquaredLength()
+    return (v1 - v2):SqLength()
 end
 
 ---@param v1 Vector2d
@@ -521,7 +521,7 @@ Area.ToString = Area.__tostring
 
 ---@param position MapPosition
 ---@return number
-function Area:SquaredDistanceToPosition(position)
+function Area:SqDistanceTo(position)
     Vector2d.MapPositionsCheck(position)
     local x = math.max(self.left_top.x - position.x, 0, position.x - self.right_bottom.x)
     local y = math.max(self.left_top.y - position.y, 0, position.y - self.right_bottom.y)
@@ -530,8 +530,8 @@ end
 
 ---@param position MapPosition
 ---@return number
-function Area:DistanceToPosition(position)
-    return math.sqrt(self:SquaredDistanceToPosition(position))
+function Area:DistanceTo(position)
+    return math.sqrt(self:SqDistanceTo(position))
 end
 
 ---@return Vector2d
@@ -542,7 +542,7 @@ end
 ---@param position MapPosition
 function Area:Contains(position)
     Vector2d.MapPositionsCheck(position)
-    return self:SquaredDistanceToPosition(position) == 0
+    return self:SqDistanceTo(position) == 0
 end
 
 script.register_metatable("Vector2d", Vector2d)

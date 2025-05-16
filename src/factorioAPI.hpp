@@ -79,19 +79,29 @@ namespace ComputerPlaysFactorio {
         SERIALIZABLE(RequestDataless, id, name)
     };
 
+    enum RequestErrorCode {
+        BUSY = 1,
+        NO_PATH_FOUND = 2,
+        EMPTY_PATH = 3,
+        NOT_ENOUGH_ITEM = 4,
+        NOT_ENOUGH_ROOM = 5,
+        ENTITY_DOESNT_EXIST = 6,
+        NOT_IN_RANGE = 7
+    };
+
     struct ResponseDataless {
         uint32_t id;
         bool success;
-        std::string message;
+        RequestErrorCode error;
 
-        SERIALIZABLE(ResponseDataless, id, success, message)
+        SERIALIZABLE(ResponseDataless, id, success, error)
     };
 
     template<class T>
     struct Response : public ResponseDataless {
         T data;
 
-        SERIALIZABLE(Response<T>, id, success, message, data)
+        SERIALIZABLE(Response<T>, id, success, error, data)
     };
 
     struct EventDataless {
