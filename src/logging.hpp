@@ -30,6 +30,10 @@ namespace ComputerPlaysFactorio {
         template<class T>
         friend LoggingStream &operator<<(LoggingStream &ls, T val);
 
+        static inline void CloseFile() {
+            if (file.is_open()) file.close();
+        }
+
     private:
         static inline std::ofstream file;
         bool newLine = true;

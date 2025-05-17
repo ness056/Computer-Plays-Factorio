@@ -98,32 +98,42 @@ namespace ComputerPlaysFactorio {
         });
 
         std::filesystem::create_directory(GetInstanceTempPath());
-        std::filesystem::copy(GetDataPath() / "defaultConfig.ini", GetConfigPath(), std::filesystem::copy_options::overwrite_existing);
+        if (std::filesystem::exists(GetDataPath() / "config.ini")) {
+            std::filesystem::copy(GetDataPath() / "config.ini", GetConfigPath(), std::filesystem::copy_options::overwrite_existing);
+        }
     }
 
     void FactorioInstance::EditConfig(const std::string &category, const std::string &name, const std::string &value) {
         const auto config = GetConfigPath();
+        std::string str;
 
-        std::ostringstream text;
-        std::ifstream in(config);
+        if (std::filesystem::exists(config)) {
+            std::ostringstream text;
+            std::ifstream in(config);
+    
+            text << in.rdbuf();
+            str = text.str();
+            in.close();
+        }
 
-        text << in.rdbuf();
-        std::string str = text.str();
         size_t pos = str.find(name + "=");
-        char c = str[pos - 1];
-        if (pos != std::string::npos && (c == '\n' || c == ' ' || c == ';')) {
+        if (pos != std::string::npos && (str[pos - 1] == '\n' || str[pos - 1] == ' ' || str[pos - 1] == ';')) {
             size_t start = str.rfind('\n', pos) + 1;
             size_t end = str.find('\n', pos);
             str.replace(start, end - start, name + "=" + value);
         } else {
             size_t cat = str.find("[" + category + "]");
-            if (cat == std::string::npos) return;
-
-            size_t start = str.find('\n', cat) + 1;
-            str.insert(start, name + "=" + value + "\n");
+            if (cat == std::string::npos) {
+                str += "\n[" + category + "]\n" + name + "=" + value + "\n";
+            } else {
+                size_t start = str.find('\n', cat) + 1;
+                if (start == std::string::npos) {
+                    str += name + "=" + value + "\n";
+                } else {
+                    str.insert(start, name + "=" + value + "\n");
+                }
+            }
         }
-
-        in.close();
 
         std::ofstream out(config);
         out << str;
@@ -148,7 +158,6 @@ namespace ComputerPlaysFactorio {
         EditConfig("interface", "show-tips-and-tricks-notifications", "false");
         EditConfig("interface", "enable-recipe-notifications", "false");
         EditConfig("graphics", "full-screen", "false");
-        EditConfig("sound", "master-volume", "0");
         
         QStringList argv = {
             QString::fromStdString(s_factorioPath),
@@ -280,10 +289,6 @@ namespace ComputerPlaysFactorio {
 
         size_t dataSize = data.size();
         int32_t size = (int32_t)dataSize + 10;
-        if (size > 4096) {
-            g_error << "need to implement multi-packet request" << std::endl;
-            exit(1);
-        }
 
         char *packet = new char[size + 4];
         std::memcpy(packet,                     &size,       sizeof(int32_t));

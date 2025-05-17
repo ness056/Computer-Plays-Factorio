@@ -71,8 +71,8 @@ namespace ComputerPlaysFactorio {
                 m_instructions.pop_front();
             }
 
-            g_info << m_currentInstruction->Send(m_gInstance) << "Send Walk" << std::endl;
-            g_info << m_currentInstruction->Wait() << "Wait" << std::endl;
+            m_currentInstruction->Send(m_gInstance);
+            g_info << m_currentInstruction->Wait() << " Walk success" << std::endl;
         }
     }
 

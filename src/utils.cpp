@@ -58,12 +58,14 @@ namespace ComputerPlaysFactorio {
     void ClearTempDirectory() {
 #ifdef _WIN32
         if (lock != INVALID_HANDLE_VALUE) {
+            LoggingStream::CloseFile();
             CloseHandle(lock);
             lock = INVALID_HANDLE_VALUE;
             RemoveAllTempDir();
         }
 #elif defined(__linux__)
         if (fd < 0) {
+            LoggingStream::CloseFile();
             flock(fd, LOCK_UN);
             close(fd);
             RemoveAllTempDir();

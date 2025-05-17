@@ -27,9 +27,18 @@ namespace ComputerPlaysFactorio {
     }
 
     void MainWindow::CreateCentralWidget() {
+        static MapPosition walkPosition;
+
+        QDoubleSpinBox *xBox = new QDoubleSpinBox;
+        xBox->setRange(-1e3, 1e3);
+        QDoubleSpinBox *yBox = new QDoubleSpinBox;
+        yBox->setRange(-1e3, 1e3);
+        connect(xBox, &QDoubleSpinBox::valueChanged, [](double x) { walkPosition.x = x; });
+        connect(yBox, &QDoubleSpinBox::valueChanged, [](double y) { walkPosition.y = y; });
+
         QPushButton *buttonTest = new QPushButton("Walk");
         connect(buttonTest, &QPushButton::clicked, [this]() {
-            m_playerController.QueueWalk(MapPosition(5, 5), [](const ResponseDataless&) {
+            m_playerController.QueueWalk(walkPosition, [](const ResponseDataless&) {
                 g_info << "Walk done" << std::endl;
             });
         });
@@ -44,6 +53,8 @@ namespace ComputerPlaysFactorio {
         m_tabWidget->setTabVisible(1, false);
 
         QHBoxLayout *layout = new QHBoxLayout;
+        layout->addWidget(xBox);
+        layout->addWidget(yBox);
         layout->addWidget(buttonTest);
         layout->addWidget(m_tabWidget);
 

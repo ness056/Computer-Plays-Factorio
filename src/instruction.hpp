@@ -48,7 +48,7 @@ namespace ComputerPlaysFactorio {
             if (!Lock()) return false;
     
             return instance.SendRequestDataResDL<T>(GetName(), *(T*)this, [this](FactorioInstance&, const ResponseDataless &res) {
-                if (!res.success && m_callback) m_callback(res);
+                if (m_callback) m_callback(res);
                 Notify();
             });
         }
@@ -69,7 +69,7 @@ namespace ComputerPlaysFactorio {
             if (!Lock()) return false;
     
             return instance.SendRequestDataRes<T, R>(GetName(), *(T*)this, [this](FactorioInstance&, const Response<R> &res) {
-                if (!res.success && m_callback) m_callback(res);
+                if (m_callback) m_callback(res);
                 Notify();
             });
         }
@@ -104,7 +104,14 @@ namespace ComputerPlaysFactorio {
     class InstructionWalk : public InstructionDL<InstructionWalk> {
     public:
         InstructionWalk(FactorioInstance &instance, MapPosition start_, MapPosition goal_, CallbackDL callback)
-            : InstructionDL(callback), m_requestPath(start_, goal_, m_requestPathCallback) {
+            : InstructionDL(callback), m_requestPath(start_, goal_, [this](const Response<Path> &res) {
+                if (res.success == false) {
+                    if (m_callback) m_callback(res);
+                    m_canceled = true;
+                }
+                else m_path = res.data;
+            }
+        ) {
             SendRequestPath(instance);
         }
         void Cancel() override {
@@ -115,30 +122,20 @@ namespace ComputerPlaysFactorio {
         inline constexpr std::string GetName() override { return "Walk"; }
 
         bool Send(FactorioInstance &instance) override {
-            g_info << "Send walk" << std::endl;
             if (!m_requestPath.Wait() || !Lock()) return false;
     
             return instance.SendRequestDataResDL("Walk", m_path, [this](FactorioInstance&, const ResponseDataless &res) {
-                if (!res.success && m_callback) m_callback(res);
+                if (m_callback) m_callback(res);
                 Notify();
             });
         }
         inline bool SendRequestPath(FactorioInstance &i) { return m_requestPath.Send(i); }
 
     private:
-        CallbackR<Path> m_requestPathCallback = [this](const Response<Path> &res) {
-            g_info << res.data.size() << std::endl;
-            if (res.success == false) {
-                if (m_callback) m_callback(res);
-                m_canceled = true;
-            }
-            else m_path = res.data;
-        };
-
         InstructionRequestPath m_requestPath;
         Path m_path;
 
-        SERIALIZABLE_CUSTOM_NAMES(InstructionWalk, "path", m_path)
+        SERIALIZABLE(InstructionWalk) // Not needed but compiler isn't happy without it
     };
 
     // struct ResponseCraft {

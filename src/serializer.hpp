@@ -44,8 +44,8 @@
  *      int m_l;
  *  
  *      SERIALIZABLE_BEGIN
- *          AUTO_NAMED_PROPERTIES(Test<T>, a, b, c, d, e, f, g),    // !!!! Do NOT forget the comma at the end !!!!
- *          CUSTOM_NAMED_PROPERTIES(Test<T>, "k", somethingWeDontWant_k, "l", somethingWeDontWant_l)
+ *          PROPERTIES(Test<T>, a, b, c, d, e, f, g),    // !!!! Do NOT forget the comma at the end !!!!
+ *          CUSTOM_NAME_PROPERTIES(Test<T>, "k", somethingWeDontWant_k, "l", somethingWeDontWant_l)
  *      SERIALIZABLE_END
  * 
  *      // Additionally, in case all the members we want to include can be named automatically,
@@ -93,24 +93,24 @@ private:\
 #define EXPAND2(...) EXPAND1(EXPAND1(EXPAND1(EXPAND1(__VA_ARGS__))))
 #define EXPAND1(...) __VA_ARGS__
 
-#define AUTO_NAMED_PROPERTIES(className, ...) __VA_OPT__(EXPAND(AUTO_NAMED_PROPERTIES_HELPER(className, __VA_ARGS__)))
-#define AUTO_NAMED_PROPERTIES_HELPER(className, v, ...) \
-    SerializerProperty(#v, &className::v) __VA_OPT__(COMMA AUTO_NAMED_PROPERTIES_AGAIN PARENS (className, __VA_ARGS__))
-#define AUTO_NAMED_PROPERTIES_AGAIN() AUTO_NAMED_PROPERTIES_HELPER
+#define PROPERTIES(className, ...) __VA_OPT__(EXPAND(PROPERTIES_HELPER(className, __VA_ARGS__)))
+#define PROPERTIES_HELPER(className, v, ...) \
+    SerializerProperty(#v, &className::v) __VA_OPT__(COMMA PROPERTIES_AGAIN PARENS (className, __VA_ARGS__))
+#define PROPERTIES_AGAIN() PROPERTIES_HELPER
 
-#define CUSTOM_NAMED_PROPERTIES(className, ...) __VA_OPT__(EXPAND(CUSTOM_NAMED_PROPERTIES_HELPER(className, __VA_ARGS__)))
-#define CUSTOM_NAMED_PROPERTIES_HELPER(className, n, v, ...) \
-    SerializerProperty(n, &className::v) __VA_OPT__(COMMA CUSTOM_NAMED_PROPERTIES_AGAIN PARENS (className, __VA_ARGS__))
-#define CUSTOM_NAMED_PROPERTIES_AGAIN() CUSTOM_NAMED_PROPERTIES_HELPER
+#define CUSTOM_NAME_PROPERTIES(className, ...) __VA_OPT__(EXPAND(CUSTOM_NAME_PROPERTIES_HELPER(className, __VA_ARGS__)))
+#define CUSTOM_NAME_PROPERTIES_HELPER(className, n, v, ...) \
+    SerializerProperty(n, &className::v) __VA_OPT__(COMMA CUSTOM_NAME_PROPERTIES_AGAIN PARENS (className, __VA_ARGS__))
+#define CUSTOM_NAME_PROPERTIES_AGAIN() CUSTOM_NAME_PROPERTIES_HELPER
 
 #define SERIALIZABLE(className, ...) \
     SERIALIZABLE_BEGIN \
-    AUTO_NAMED_PROPERTIES(className, __VA_ARGS__) \
+    PROPERTIES(className, __VA_ARGS__) \
     SERIALIZABLE_END
 
 #define SERIALIZABLE_CUSTOM_NAMES(className, ...) \
     SERIALIZABLE_BEGIN \
-    CUSTOM_NAMED_PROPERTIES(className, __VA_ARGS__) \
+    CUSTOM_NAME_PROPERTIES(className, __VA_ARGS__) \
     SERIALIZABLE_END
 
     inline QJsonValue ToJson(const bool &v) {
