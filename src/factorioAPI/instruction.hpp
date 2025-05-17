@@ -6,8 +6,8 @@
 #include <condition_variable>
 
 #include "factorioAPI.hpp"
-#include "serializer.hpp"
-#include "utils.hpp"
+#include "../utils/serializer.hpp"
+#include "../utils/utils.hpp"
     
 /**
  * Instructions are a special type requests that are waitable and mainly used to control

@@ -2,7 +2,7 @@
 
 #include <QtWidgets>
 
-#include "playerController.hpp"
+#include "../factorioAPI/playerController.hpp"
 
 namespace ComputerPlaysFactorio {
 

@@ -39,10 +39,9 @@
 #error "Only Windows and Linux are supported for now"
 #endif
 
-#include "serializer.hpp"
-#include "logging.hpp"
-#include "thread.hpp"
-#include "utils.hpp"
+#include "../utils/serializer.hpp"
+#include "../utils/thread.hpp"
+#include "../utils/utils.hpp"
 
 /**
  *      Protocol used to communicate with Factorio:

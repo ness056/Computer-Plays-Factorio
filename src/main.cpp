@@ -1,7 +1,5 @@
-#include "gui.hpp"
-#include "factorioAPI.hpp"
-#include "thread.hpp"
-#include "utils.hpp"
+#include "gui/gui.hpp"
+#include "utils/thread.hpp"
 
 using namespace ComputerPlaysFactorio;
 

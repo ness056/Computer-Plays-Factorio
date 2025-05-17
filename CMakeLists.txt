@@ -10,21 +10,19 @@ qt_standard_project_setup()
 
 qt_add_executable(${PROJECT_NAME}
     src/main.cpp
-    src/gui.hpp
-    src/gui.cpp
-    src/playerController.hpp
-    src/playerController.cpp
-    src/factorioAPI.hpp
-    src/factorioAPI.cpp
-    src/instruction.hpp
-    src/instruction.cpp
-    src/thread.hpp
-    src/thread.cpp
-    src/utils.hpp
-    src/utils.cpp
-    src/logging.hpp
-    src/logging.cpp
-    src/serializer.hpp
+    src/gui/gui.hpp
+    src/gui/gui.cpp
+    src/factorioAPI/playerController.hpp
+    src/factorioAPI/playerController.cpp
+    src/factorioAPI/instruction.hpp
+    src/factorioAPI/instruction.cpp
+    src/factorioAPI/factorioAPI.hpp
+    src/factorioAPI/factorioAPI.cpp
+    src/utils/thread.hpp
+    src/utils/thread.cpp
+    src/utils/utils.hpp
+    src/utils/utils.cpp
+    src/utils/serializer.hpp
 )
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
