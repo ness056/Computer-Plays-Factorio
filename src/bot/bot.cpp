@@ -34,7 +34,37 @@ namespace ComputerPlaysFactorio {
 
     void Bot::Loop() {
         while(!m_exit) {
-            
+            {
+                std::unique_lock lock(m_loopMutex);
+                m_loopCond.wait(lock, [this] { return !m_instructions.empty() || m_exit; });
+            }
+
+            if (m_exit) break;
+
+            std::shared_ptr<Waiter> waiter;
+            {
+                std::unique_lock lock(m_loopMutex);
+                waiter = m_instructions.front()->Send(m_instance);
+                if (waiter == nullptr) {
+                    g_error << "TODO line: " << __LINE__ << std::endl;
+                    exit(1);
+                }
+                m_instructions.pop_front();
+            }
+            waiter->Wait();
         }
+    }
+
+    bool Bot::QueueInstruction(const Instruction &instruction) {
+        if (!Running()) return false;
+
+        {
+            std::unique_lock lock(m_loopMutex);
+            m_instructions.push_back(std::make_unique<Instruction>(instruction));
+            m_instructions.back()->Precompute();
+        }
+        m_loopCond.notify_all();
+
+        return true;
     }
 }

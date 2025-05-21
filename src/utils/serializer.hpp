@@ -76,10 +76,10 @@ namespace ComputerPlaysFactorio {
 
 #define SERIALIZABLE_BEGIN \
 private:\
-    template<class T>\
-    friend QJsonObject ToJson(const T &v);\
-    template<class T>\
-    friend void FromJson(const QJsonValue &json, T &out);\
+    template<class __T__>\
+    friend QJsonObject ToJson(const __T__ &v);\
+    template<class __T__>\
+    friend void FromJson(const QJsonValue &json, __T__ &out);\
     constexpr static auto s_properties = std::make_tuple(
 
 #define SERIALIZABLE_END );

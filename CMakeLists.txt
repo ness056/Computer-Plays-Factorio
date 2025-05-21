@@ -16,6 +16,7 @@ qt_add_executable(${PROJECT_NAME}
     src/bot/bot.cpp
     src/factorioAPI/factorioAPI.hpp
     src/factorioAPI/factorioAPI.cpp
+    src/factorioAPI/instruction.hpp
     src/factorioAPI/types.hpp
     src/utils/thread.hpp
     src/utils/thread.cpp

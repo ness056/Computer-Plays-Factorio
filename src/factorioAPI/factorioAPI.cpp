@@ -69,7 +69,7 @@ namespace ComputerPlaysFactorio {
             exit(1);
         }
         SOCKADDR_IN addr;
-        int len = sizeof(addr);
+        SOCKLEN len = sizeof(addr);
         memset(&addr, 0, len);
         addr.sin_family = AF_INET;
 
@@ -79,7 +79,7 @@ namespace ComputerPlaysFactorio {
         }
 
         if (getsockname(s, (SOCKADDR*)&addr, &len) == SOCKET_ERROR) {
-            g_error << "getsockname " << GetLastError() << std::endl;
+            g_error << "getsockname " << std::endl;
             exit(1);
         }
         closesocket(s);

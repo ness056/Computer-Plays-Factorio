@@ -17,6 +17,7 @@
 #include <Windows.h>
 #elif defined(__linux__)
 #include <unistd.h>
+#include <sys/file.h>
 #endif
 
 #include "serializer.hpp"
@@ -29,13 +30,16 @@ namespace ComputerPlaysFactorio {
             std::unique_lock lock(m_mutex);
             m_locked = true;
         }
-        inline void Notify() {
+        inline void Unlock() {
             m_locked = false;
             m_cond.notify_all();
         }
         inline void Wait() {
             std::unique_lock lock(m_mutex);
             m_cond.wait(lock, [this] { return !m_locked; });
+        }
+        inline bool IsLocked() {
+            return m_locked;
         }
 
     private:
@@ -44,7 +48,7 @@ namespace ComputerPlaysFactorio {
         std::condition_variable m_cond;
     };
 
-    extern const std::chrono::steady_clock::time_point g_startTime;
+    extern const std::chrono::high_resolution_clock::time_point g_startTime;
 
     class LoggingStream {
     public:

@@ -2,7 +2,8 @@
 
 namespace ComputerPlaysFactorio {
 
-    extern const std::chrono::steady_clock::time_point g_startTime = std::chrono::high_resolution_clock::now();
+    extern const std::chrono::high_resolution_clock::time_point g_startTime =
+        std::chrono::high_resolution_clock::now();
 
     LoggingStream g_info("Info");
     LoggingStream g_warring("Warring");

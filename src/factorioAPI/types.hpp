@@ -7,6 +7,8 @@
 
 namespace ComputerPlaysFactorio {
 
+    class FactorioInstance;
+
     enum Direction {
         North,
         Northeast,
@@ -32,7 +34,7 @@ namespace ComputerPlaysFactorio {
             return *this;
         }
 
-        friend constexpr MapPosition &operator+(MapPosition lhs, const MapPosition &rhs) {
+        friend constexpr MapPosition operator+(MapPosition lhs, const MapPosition &rhs) {
             lhs += rhs;
             return lhs;
         }
@@ -89,6 +91,10 @@ namespace ComputerPlaysFactorio {
         SERIALIZABLE(Response<T>, id, success, error, data)
     };
 
+    template<class T>
+    using RequestCallback = std::function<void(FactorioInstance&, const Response<T>&)>;
+    using RequestDatalessCallback = std::function<void(FactorioInstance&, const ResponseDataless&)>;
+
     struct EventDataless {
         uint32_t id;
         std::string name;
@@ -108,47 +114,4 @@ namespace ComputerPlaysFactorio {
     };
 
     using Path = std::vector<PathfinderWaypoint>;
-
-    struct RequestPathData {
-        MapPosition start;
-        MapPosition goal;
-
-        SERIALIZABLE(RequestPathData, start, goal);
-    };
-
-    struct CraftData {
-        std::string recipe;
-        uint32_t amount;
-        bool force;
-
-        SERIALIZABLE(CraftData, recipe, amount, force);
-    };
-
-    struct BuildData {
-        MapPosition position;
-        std::string item;
-        Direction direction;
-
-        SERIALIZABLE(BuildData, position, item, direction);
-    };
-
-    struct RotateData {
-        MapPosition position;
-        std::string entity;
-        bool reversed;
-
-        SERIALIZABLE(RotateData, position, entity, reversed);
-    };
-    
-    struct PutTakeData {
-        MapPosition position;
-        std::string entity;
-        std::string item;
-        int32_t amount;
-        uint8_t playerInventory;
-        uint8_t entityInventory;
-        bool force;
-
-        SERIALIZABLE(PutTakeData, position, entity, item, amount, playerInventory, entityInventory, force);
-    };
 }
