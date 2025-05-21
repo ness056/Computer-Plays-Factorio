@@ -1,21 +1,7 @@
-local API = require("api")
-local Event = require("event")
-local Math2d = require("math2d")
+local API = require("__computer-plays-factorio__.api")
+local Event = require("__computer-plays-factorio__.event")
+local Math2d = require("__computer-plays-factorio__.math2d")
 local Vector = Math2d.Vector2d
-local Area = Math2d.Area
-
-Event.OnInit(function ()
-    ---@type Request<{ start: MapPosition.0, goal: MapPosition.0 }>[]
-    storage.pathRequests = {}
-    ---@type Request<any>?
-    storage.instruction = nil
-    ---Used for instruction like build, put, take, etc for which
-    ---the player has a certain range.
-    ---@type Area?
-    storage.instructionArea = nil
-    ---@type number?
-    storage.instructionSqDistance = nil
-end)
 
 ---@param request Request<{ start: MapPosition.0, goal: MapPosition.0 }>
 local function RequestPath(request)
@@ -37,7 +23,6 @@ local function RequestPath(request)
             cache = true
         }
     })
-    log("true")
 
     storage.pathRequests[id] = request
 end
@@ -60,7 +45,7 @@ Event.OnEvent(defines.events.on_script_path_request_finished, function (event)
     if (event.path) then
         API.Success(request, event.path)
     else
-        API.Failed(request, RequestErrorCode.NO_PATH_FOUND)
+        API.Failed(request, RequestError.NO_PATH_FOUND)
     end
 end)
 
@@ -127,12 +112,12 @@ end
 ---@param request Request<PathfinderWaypoint[]>
 API.AddRequestHandler("Walk", function (request)
     if storage.walkRequest then
-        API.Failed(request, RequestErrorCode.BUSY)
+        API.Failed(request, RequestError.BUSY)
         return
     end
 
     if table_size(request.data) == 0 then
-        API.Failed(request, RequestErrorCode.EMPTY_PATH)
+        API.Failed(request, RequestError.EMPTY_PATH)
         return
     end
 
@@ -142,46 +127,3 @@ API.AddRequestHandler("Walk", function (request)
 end)
 
 Event.OnEvent(defines.events.on_tick, EvaluatePath)
-
--- ---@param request Request<{ position: MapPosition.0, item: string, direction: defines.direction }>
--- local function Build(request)
---     local player = game.get_player(1) --[[@as LuaPlayer]]
---     local data = request.data
-
---     if player.get_item_count(data.item) == 0 then
---         API.Failed(request, RequestErrorCode.NOT_ENOUGH_ITEM)
---         return
---     end
-
---     if not player.can_place_entity{ name = data.item, position = data.position, direction = data.direction } then
---         API.Failed(request, RequestErrorCode.NOT_ENOUGH_ROOM)
---         return
---     end
--- end
-
--- ---@param request Request<any>
--- API.AddRequestHandler("Build", function (request)
---     if storage.instruction then
---         API.Failed(request, RequestErrorCode.BUSY)
---         return
---     end
---     storage.instruction = request
-
---     local player = game.get_player(1) --[[@as LuaPlayer]]
---     box = prototypes.entity[request.data.item].collision_box
---     storage.instructionArea = Area.Add(box, request.data.position)
---     storage.instructionSqDistance = math.pow(player.build_distance, 2)
--- end)
-
--- Event.OnEvent(defines.events.on_tick, function (event)
---     local i = storage.instruction
---     if not i then return end
-
---     if storage.instructionArea then
---         if storage.instructionArea:SqDistanceTo(i.data.position) > storage.instructionSqDistance then
---             return;
---         end
---     end
-
---     if i.name == "Build" then Build(i) end
--- end)

@@ -1,4 +1,4 @@
-local Event = require("event")
+local Event = require("__computer-plays-factorio__.event")
 local util = require("util")
 local crash_site = require("crash-site")
 

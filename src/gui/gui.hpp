@@ -2,7 +2,7 @@
 
 #include <QtWidgets>
 
-#include "../factorioAPI/playerController.hpp"
+#include "../bot/bot.hpp"
 
 namespace ComputerPlaysFactorio {
 
@@ -21,7 +21,7 @@ namespace ComputerPlaysFactorio {
         void About();
 
     private:
-        PlayerController m_playerController;
+        Bot m_bot;
 
         void CreateCentralWidget();
         void CreateActions();

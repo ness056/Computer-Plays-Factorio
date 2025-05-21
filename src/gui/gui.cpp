@@ -11,11 +11,11 @@ namespace ComputerPlaysFactorio {
         CreateActions();
         CreateMenus();
 
-        connect(&m_playerController.GetFactorioInstance(), &FactorioInstance::Started, [this]() {
+        connect(&m_bot.GetFactorioInstance(), &FactorioInstance::Started, [this]() {
             m_actToggleFactorio->setText("Stop Factorio");
         });
 
-        connect(&m_playerController.GetFactorioInstance(), &FactorioInstance::Terminated, [this]() {
+        connect(&m_bot.GetFactorioInstance(), &FactorioInstance::Terminated, [this]() {
             m_actToggleFactorio->setText("Start Factorio");
         });
     }
@@ -27,22 +27,6 @@ namespace ComputerPlaysFactorio {
     }
 
     void MainWindow::CreateCentralWidget() {
-        static MapPosition walkPosition;
-
-        QDoubleSpinBox *xBox = new QDoubleSpinBox;
-        xBox->setRange(-1e3, 1e3);
-        QDoubleSpinBox *yBox = new QDoubleSpinBox;
-        yBox->setRange(-1e3, 1e3);
-        connect(xBox, &QDoubleSpinBox::valueChanged, [](double x) { walkPosition.x = x; });
-        connect(yBox, &QDoubleSpinBox::valueChanged, [](double y) { walkPosition.y = y; });
-
-        QPushButton *buttonTest = new QPushButton("Walk");
-        connect(buttonTest, &QPushButton::clicked, [this]() {
-            m_playerController.QueueWalk(walkPosition, [](const ResponseDataless&) {
-                g_info << "Walk done" << std::endl;
-            });
-        });
-        
         m_commandLineTab = new QWidget();
         m_requestSenderTab = new QWidget();
 
@@ -53,9 +37,6 @@ namespace ComputerPlaysFactorio {
         m_tabWidget->setTabVisible(1, false);
 
         QHBoxLayout *layout = new QHBoxLayout;
-        layout->addWidget(xBox);
-        layout->addWidget(yBox);
-        layout->addWidget(buttonTest);
         layout->addWidget(m_tabWidget);
 
         QWidget *widget = new QWidget;
@@ -121,11 +102,11 @@ namespace ComputerPlaysFactorio {
     }
 
     void MainWindow::ToggleFactorio() {
-        if (m_playerController.GetFactorioInstance().Running()) {
-            m_playerController.Stop();
+        if (m_bot.GetFactorioInstance().Running()) {
+            m_bot.Stop();
         } else {
             std::string message;
-            if (!m_playerController.Start(0, &message)) {
+            if (!m_bot.Start(&message)) {
                 QMessageBox msgBox(QMessageBox::Warning, "Could not start Factorio", QString::fromStdString(message));
                 msgBox.exec();
             }

@@ -39,6 +39,7 @@
 #error "Only Windows and Linux are supported for now"
 #endif
 
+#include "types.hpp"
 #include "../utils/serializer.hpp"
 #include "../utils/thread.hpp"
 #include "../utils/utils.hpp"
@@ -69,48 +70,6 @@ namespace ComputerPlaysFactorio {
         RCON_EXECCOMMAND = 2,
         RCON_AUTH_RESPONSE = 2,
         RCON_RESPONSE_VALUE = 0
-    };
-
-    struct RequestDataless {
-        uint32_t id;
-        std::string name;
-
-        SERIALIZABLE(RequestDataless, id, name)
-    };
-
-    enum RequestErrorCode {
-        BUSY = 1,
-        NO_PATH_FOUND = 2,
-        EMPTY_PATH = 3,
-        NOT_ENOUGH_ITEM = 4,
-        NOT_ENOUGH_ROOM = 5,
-        ENTITY_DOESNT_EXIST = 6,
-        NOT_IN_RANGE = 7
-    };
-
-    struct ResponseDataless {
-        uint32_t id;
-        bool success;
-        RequestErrorCode error;
-
-        SERIALIZABLE(ResponseDataless, id, success, error)
-    };
-
-    template<class T>
-    struct Response : public ResponseDataless {
-        T data;
-
-        SERIALIZABLE(Response<T>, id, success, error, data)
-    };
-
-    struct EventDataless {
-        uint32_t id;
-        std::string name;
-    };
-
-    template<class T>
-    struct Event : public EventDataless {
-        T data;
     };
 
     class FactorioInstance : public QObject {
@@ -175,6 +134,56 @@ namespace ComputerPlaysFactorio {
         inline bool SetGameSpeed(float ticks) const { return SendRequestData("GameSpeed", ticks); }
         inline bool PauseToggle() const { return SendRequest("PauseToggle"); }
         inline bool Save(const std::string &name) const { return SendRequestData("Save", name); }
+
+        inline bool RequestPath(MapPosition start, MapPosition goal, RequestCallback<Path> callback = nullptr) {
+            return SendRequestDataRes("RequestPath", RequestPathData{.start = start, .goal = goal}, callback);
+        }
+
+        inline bool Walk(const Path& path, RequestDatalessCallback callback = nullptr) {
+            return SendRequestDataResDL("Walk", path, callback);
+        }
+
+        inline bool CraftableAmount(const std::string &recipe, RequestCallback<uint32_t> callback = nullptr) {
+            return SendRequestDataRes("CraftableAmount", recipe, callback);
+        }
+
+        inline bool Craft(const std::string &recipe, uint32_t amount, bool force, RequestCallback<uint32_t> callback = nullptr) {
+            return SendRequestDataRes("Craft", CraftData{.recipe = recipe, .amount = amount, .force = force}, callback);
+        }
+
+        // inline bool Cancel(std::shared_ptr<Cancel> instruction);
+
+        inline bool Build(MapPosition pos, const std::string &item, Direction direction, RequestDatalessCallback callback = nullptr) {
+            return SendRequestDataResDL("Build", BuildData{.position = pos, .item = item, .direction = direction}, callback);
+        }
+
+        inline bool Mine(MapPosition pos, RequestCallback<std::map<std::string, uint32_t>> callback = nullptr) {
+            return SendRequestDataRes("Mine", pos, callback);
+        }
+
+        inline bool Rotate(MapPosition pos, const std::string &entity, bool reversed, RequestCallback<Direction> callback = nullptr) {
+            return SendRequestDataRes("Rotate", RotateData{.position = pos, .entity = entity, .reversed = reversed}, callback);
+        }
+
+        inline bool Take(const PutTakeData &data, RequestCallback<uint32_t> callback = nullptr) {
+            return SendRequestDataRes("Take", data, callback);
+        }
+
+        inline bool Put(const PutTakeData &data, RequestCallback<uint32_t> callback = nullptr) {
+            return SendRequestDataRes("Put", data, callback);
+        }
+
+        // inline bool Tech(std::shared_ptr<Tech> instruction);
+        // inline bool Pickup(std::shared_ptr<Pickup> instruction);
+        // inline bool Drop(std::shared_ptr<Drop> instruction);
+        // inline bool Shoot(std::shared_ptr<Shoot> instruction);
+        // inline bool Use(std::shared_ptr<Use> instruction);
+        // inline bool Equip(std::shared_ptr<Equip> instruction);
+        // inline bool Recipe(std::shared_ptr<Recipe> instruction);
+        // inline bool Limit(std::shared_ptr<Limit> instruction);
+        // inline bool Filter(std::shared_ptr<Filter> instruction);
+        // inline bool Priority(std::shared_ptr<Priority> instruction);
+        // inline bool Launch(std::shared_ptr<Launch> instruction);
 
         const Type instanceType;
 

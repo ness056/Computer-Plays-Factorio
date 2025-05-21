@@ -12,12 +12,11 @@ qt_add_executable(${PROJECT_NAME}
     src/main.cpp
     src/gui/gui.hpp
     src/gui/gui.cpp
-    src/factorioAPI/playerController.hpp
-    src/factorioAPI/playerController.cpp
-    src/factorioAPI/instruction.hpp
-    src/factorioAPI/instruction.cpp
+    src/bot/bot.hpp
+    src/bot/bot.cpp
     src/factorioAPI/factorioAPI.hpp
     src/factorioAPI/factorioAPI.cpp
+    src/factorioAPI/types.hpp
     src/utils/thread.hpp
     src/utils/thread.cpp
     src/utils/utils.hpp

@@ -1,6 +1,8 @@
 ---@class API
 local API = {}
 
+local Event = require("__computer-plays-factorio__.event")
+
 ---@alias RequestHandler fun(request: Request<any>)
 
 ---@type table<string, RequestHandler>
@@ -31,15 +33,23 @@ function API.GetRequestHandler(requestName)
     return assert(requestName and requestHandlers[requestName], "No handler for the request name " .. (requestName and requestName or "nil") .. " has been registered")
 end
 
----@enum RequestErrorCode
-RequestErrorCode = {
-    BUSY = 1,
-    NO_PATH_FOUND = 2,
-    EMPTY_PATH = 3,
-    NOT_ENOUGH_ITEM = 4,
-    NOT_ENOUGH_ROOM = 5,
-    ENTITY_DOESNT_EXIST = 6,
-    NOT_IN_RANGE = 7
+---@enum RequestError
+RequestError = {
+    BUSY = 1,                       -- An instruction is already being executed
+    NO_PATH_FOUND = 2,              -- Pathfinder failed to find a path
+    EMPTY_PATH = 3,                 -- The given path is empty
+    ENTITY_DOESNT_EXIST = 4,        -- No entity prototype with the given name exist
+    ITEM_DOESNT_EXIST = 5,          -- No item prototype with the given name exist
+    FLUID_DOESNT_EXIST = 6,         -- No fluid prototype with the given name exist
+    RECIPE_DOESNT_EXIST = 7,        -- No recipe prototype with the given name exist
+    NOT_ENOUGH_ITEM = 8,            -- Not enough item in the inventory
+    NOT_ENOUGH_ROOM = 9,            -- The entity cannot be built because another entity is in the way
+    NOT_IN_RANGE = 10,              -- The player is not in range
+    ITEM_NOT_BUILDABLE = 11,        -- The given item prototype cannot be built in an entity
+    NO_ENTITY_FOUND = 12,           -- No entity at the given position was found
+    NO_INVENTORY_FOUND = 13,        -- The given entity or player does not have an inventory of the given index
+    NOT_ENOUGH_INGREDIENTS = 14,    -- Not enough ingredients to craft
+    ENTITY_NOT_ROTATABLE = 15,      -- The given entity is not rotatable
 }
 
 ---@alias Request<T> { id: int, name: string, data: T }
@@ -59,7 +69,7 @@ end
 
 ---@generic T
 ---@param request Request<T>
----@param error RequestErrorCode
+---@param error RequestError
 function API.Failed(request, error)
     local d = helpers.table_to_json({
         id = request.id,
@@ -90,6 +100,15 @@ end)
 
 function API.InvokeEvent()
 
+end
+
+Event.OnInit(function ()
+    storage.id = 0
+end)
+
+function API.GetId()
+    storage.id = storage.id + 1
+    return storage.id
 end
 
 return API
