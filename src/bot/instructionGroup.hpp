@@ -6,6 +6,7 @@ namespace ComputerPlaysFactorio {
 
     class InstructionGroup {
     public:
+        InstructionGroup(const std::initializer_list<Instruction>>&)
         void ComputePath(FactorioInstance&, MapPosition start);
 
         // Must be used kinda like make_unique or make_shared
@@ -15,7 +16,7 @@ namespace ComputerPlaysFactorio {
 
             {
                 std::unique_lock lock(m_instructionsMutex);
-                m_instructions.push_back(std::make_unique<T>(args...));
+                m_instructions.push_back(std::make_shared<T>(args...));
                 // m_instructions.back()->Precompute(m_instance);
             }
             m_instructionsCond.notify_all();
@@ -26,7 +27,7 @@ namespace ComputerPlaysFactorio {
         MapPosition position;
 
     private:
-        std::deque<std::unique_ptr<Instruction>> m_instructions;>
+        std::deque<std::shared_ptr<Instruction>> m_instructions;>
         Path m_path;
         bool m_pathRequested = false;
     }

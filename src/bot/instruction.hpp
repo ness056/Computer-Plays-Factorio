@@ -82,48 +82,6 @@ namespace ComputerPlaysFactorio {
         RequestDatalessCallback callback;
     };
 
-    struct RequestPathData {
-        MapPosition start;
-        MapPosition goal;
-
-        SERIALIZABLE(RequestPathData, start, goal);
-    };
-
-    class RequestPath : public InstructionRes<RequestPathData, Path> {
-    public:
-        using InstructionRes::InstructionRes;
-        constexpr std::string Name() { return "RequestPath"; }
-    };
-
-    class Walk : public InstructionDL<Path> {
-    public:
-        Walk(Path path, RequestDatalessCallback callback = nullptr) :
-            InstructionDL(path, callback) { m_precomputed = true; }
-        Walk(MapPosition start, MapPosition goal, RequestDatalessCallback callback = nullptr) :
-            InstructionDL({}, callback), m_start(start), m_goal(goal) { m_precomputed = false; }
-
-        constexpr std::string Name() { return "Walk"; }
-        
-        void Precompute(FactorioInstance &instance) {
-            std::unique_lock lock(m_precomputeMutex);
-            if (m_precomputeWaiter.IsLocked()) return;
-
-            m_precomputed = true;
-            m_precomputeWaiter.Lock();
-
-            auto r = RequestPath(RequestPathData{.start = m_start, .goal = m_goal},
-                [this] (FactorioInstance&, const Response<Path> &res) {
-                    data = res.data;
-                    m_precomputeWaiter.Unlock();
-                }
-            );
-            r.Send(instance);
-        }
-
-        MapPosition m_start;
-        MapPosition m_goal;
-    };
-
     class CraftableAmount : public InstructionRes<std::string, uint32_t> {
     public:
         using InstructionRes::InstructionRes;

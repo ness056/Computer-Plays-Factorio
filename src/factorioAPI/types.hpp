@@ -66,4 +66,11 @@ namespace ComputerPlaysFactorio {
     };
 
     using Path = std::vector<PathfinderWaypoint>;
+
+    struct RequestPathData {
+        MapPosition start;
+        MapPosition goal;
+
+        SERIALIZABLE(RequestPathData, start, goal);
+    };
 }
