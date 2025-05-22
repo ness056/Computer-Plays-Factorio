@@ -1,7 +1,6 @@
 #pragma once
 
-#include "factorioAPI.hpp"
-#include "types.hpp"
+#include "../factorioAPI/factorioAPI.hpp"
 
 namespace ComputerPlaysFactorio {
     class Instruction {
@@ -17,6 +16,9 @@ namespace ComputerPlaysFactorio {
             m_precomputed = true;
         }
         virtual constexpr std::string Name() = 0;
+        void Cancel() {
+            m_precomputeWaiter.Unlock(false);
+        }
 
     protected:
         std::mutex m_precomputeMutex;
@@ -34,18 +36,18 @@ namespace ComputerPlaysFactorio {
             auto waiter = std::make_shared<Waiter>();
             waiter->Lock();
 
-            if (!m_precomputed) Precompute();
-            m_precomputeWaiter.Wait();
+            if (!m_precomputed) Precompute(instance);
+            if (!m_precomputeWaiter.Wait()) return nullptr;
 
-            if (instance.SendRequestDataRes(Name(), data,
-                [waiter](FactorioInstance &i, const Response<ResType> &d) {
+            bool success = instance.SendRequestDataRes<ReqType, ResType>(Name(), data,
+                [callback = callback, waiter](FactorioInstance &i, const Response<ResType> &d) {
                     if (callback) callback(i, d);
                     waiter->Unlock();
-            })) {
-                return waiter;
-            }
+                }
+            );
 
-            return nullptr;
+            if (success) return waiter;
+            else return nullptr;
         }
 
         ReqType data;
@@ -62,17 +64,17 @@ namespace ComputerPlaysFactorio {
             auto waiter = std::make_shared<Waiter>();
             waiter->Lock();
 
-            Precompute();
-            m_precomputeWaiter.Wait();
+            if (!m_precomputed) Precompute(instance);
+            if (!m_precomputeWaiter.Wait()) return nullptr;
 
-            if (instance.SendRequestDataResDL(Name(), data,
-                [waiter](FactorioInstance &i, const ResponseDataless &d) {
+            bool success = instance.SendRequestDataResDL(Name(), data,
+                [callback = callback, waiter](FactorioInstance &i, const ResponseDataless &d) {
                     if (callback) callback(i, d);
                     waiter->Unlock();
-            })) {
-                return waiter;
-            }
+                }
+            );
 
+            if (success) return waiter;
             return nullptr;
         }
 
@@ -98,7 +100,7 @@ namespace ComputerPlaysFactorio {
         Walk(Path path, RequestDatalessCallback callback = nullptr) :
             InstructionDL(path, callback) { m_precomputed = true; }
         Walk(MapPosition start, MapPosition goal, RequestDatalessCallback callback = nullptr) :
-            InstructionDL({}, callback) { m_precomputed = false; }
+            InstructionDL({}, callback), m_start(start), m_goal(goal) { m_precomputed = false; }
 
         constexpr std::string Name() { return "Walk"; }
         
@@ -111,7 +113,7 @@ namespace ComputerPlaysFactorio {
 
             auto r = RequestPath(RequestPathData{.start = m_start, .goal = m_goal},
                 [this] (FactorioInstance&, const Response<Path> &res) {
-                    m_data = res.data;
+                    data = res.data;
                     m_precomputeWaiter.Unlock();
                 }
             );

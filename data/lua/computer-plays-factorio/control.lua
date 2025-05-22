@@ -1,9 +1,9 @@
 require("__computer-plays-factorio__.freeplay")
 require("__computer-plays-factorio__.instruction")
-require("__computer-plays-factorio__.instructions.walk")
-require("__computer-plays-factorio__.instructions.craft")
-require("__computer-plays-factorio__.instructions.build")
-require("__computer-plays-factorio__.instructions.moveItem")
+require("__computer-plays-factorio__.requests.walk")
+require("__computer-plays-factorio__.requests.craft")
+require("__computer-plays-factorio__.requests.entity")
+require("__computer-plays-factorio__.requests.item")
 local API = require("__computer-plays-factorio__.api")
 
 commands.add_command("reload", "", function (c)

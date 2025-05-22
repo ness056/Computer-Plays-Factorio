@@ -3,6 +3,47 @@ local Event = require("__computer-plays-factorio__.event")
 local Math2d = require("__computer-plays-factorio__.math2d")
 local Vector = Math2d.Vector2d
 
+--[[
+/sc
+local pos = {
+    {10, 10},
+    {0, 0},
+    {10, 0},
+    {0, 10},
+    {5, 9}
+}
+local player = game.player
+for k, _ in pairs(pos) do
+    player.surface.request_path({
+        bounding_box = prototypes.entity["character"].collision_box,
+        collision_mask = prototypes.entity["character"].collision_mask,
+        force = "player",
+        start = k == 1 and {0, 0} or pos[k - 1],
+        goal = pos[k],
+        entity_to_ignore = player and player.character,
+        path_resolution_modifier = 0,
+        pathfind_flags = {
+            cache = false
+        }
+    })
+end
+
+/sc
+local player = game.player
+player.surface.request_path({
+    bounding_box = prototypes.entity["character"].collision_box,
+    collision_mask = prototypes.entity["character"].collision_mask,
+    force = "player",
+    start = {12, 0},
+    goal = {12, 10},
+    entity_to_ignore = player and player.character,
+    path_resolution_modifier = 0,
+    pathfind_flags = {
+        cache = false
+    }
+})
+]]
+
 ---@param request Request<{ start: MapPosition.0, goal: MapPosition.0 }>
 local function RequestPath(request)
     local nauvis = game.get_surface(1) --[[@as LuaSurface]]
@@ -20,7 +61,7 @@ local function RequestPath(request)
         path_resolution_modifier = 0,
         pathfind_flags = {
             no_break = true,
-            cache = true
+            cache = false
         }
     })
 
@@ -28,11 +69,13 @@ local function RequestPath(request)
 end
 
 API.AddRequestHandler("RequestPath", function (request)
+    log("RequestPath on tick: " .. game.tick)
     RequestPath(request)
 end)
 
 ---@param event EventData.on_script_path_request_finished
 Event.OnEvent(defines.events.on_script_path_request_finished, function (event)
+    log("on_script_path_request_finished on tick: " .. game.tick)
     if (not storage.pathRequests[event.id]) then return end
 
     local request = storage.pathRequests[event.id]

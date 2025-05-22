@@ -40,3 +40,6 @@ API.AddRequestHandler("Craft", function(request)
 
     API.Success(request, player.begin_crafting{ recipe = data.recipe, count = amount, silent = true })
 end)
+
+-- API.AddRequestHandler("WaitCraft")
+-- API.AddRequestHandler("Cancel")

@@ -27,6 +27,11 @@ namespace ComputerPlaysFactorio {
     }
 
     void MainWindow::CreateCentralWidget() {
+        QPushButton *buttonTest = new QPushButton("Walk");
+        connect(buttonTest, &QPushButton::clicked, [this]() {
+            m_bot.Test();
+        });
+
         m_commandLineTab = new QWidget();
         m_requestSenderTab = new QWidget();
 
@@ -37,6 +42,7 @@ namespace ComputerPlaysFactorio {
         m_tabWidget->setTabVisible(1, false);
 
         QHBoxLayout *layout = new QHBoxLayout;
+        layout->addWidget(buttonTest);
         layout->addWidget(m_tabWidget);
 
         QWidget *widget = new QWidget;

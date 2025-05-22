@@ -81,6 +81,7 @@ function API.Failed(request, error)
 end
 
 commands.add_command("request", nil, function (data)
+    log(data.parameter)
     if data.player_index ~= nil then
         game.get_player(data.player_index).print("You cannot use this command")
         return

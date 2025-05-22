@@ -151,6 +151,7 @@ namespace ComputerPlaysFactorio {
 
         EditConfig("path", "write-data", GetInstanceTempPath().string());
         EditConfig("path", "mods", GetLuaPath().string());
+        EditConfig("path", "saves", (GetDataPath() / "saves").string());
         EditConfig("other", "local-rcon-socket", "0.0.0.0:" + std::to_string(m_rconPort));
         EditConfig("other", "local-rcon-password", "pass");
         EditConfig("other", "check-updates", "false");

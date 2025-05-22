@@ -30,20 +30,23 @@ namespace ComputerPlaysFactorio {
             std::unique_lock lock(m_mutex);
             m_locked = true;
         }
-        inline void Unlock() {
+        inline void Unlock(bool success = true) {
+            m_success = success;
             m_locked = false;
             m_cond.notify_all();
         }
-        inline void Wait() {
+        inline bool Wait() {
             std::unique_lock lock(m_mutex);
             m_cond.wait(lock, [this] { return !m_locked; });
+            return m_success;
         }
         inline bool IsLocked() {
             return m_locked;
         }
 
     private:
-        bool m_locked;
+        bool m_success;
+        bool m_locked = false;
         std::mutex m_mutex;
         std::condition_variable m_cond;
     };

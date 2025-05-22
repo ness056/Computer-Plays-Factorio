@@ -75,6 +75,54 @@ namespace ComputerPlaysFactorio {
         RCON_RESPONSE_VALUE = 0
     };
 
+    struct RequestDataless {
+        uint32_t id;
+        std::string name;
+
+        SERIALIZABLE(RequestDataless, id, name)
+    };
+
+    enum RequestError {
+        BUSY = 1,
+        NO_PATH_FOUND = 2,
+        EMPTY_PATH = 3,
+        ENTITY_DOESNT_EXIST = 4,
+        ITEM_DOESNT_EXIST = 5,
+        NOT_ENOUGH_ITEM = 6,
+        NOT_ENOUGH_ROOM = 7,
+        NOT_IN_RANGE = 8,
+        ITEM_CANNOT_BE_PLACED = 9
+    };
+
+    struct ResponseDataless {
+        uint32_t id;
+        bool success;
+        RequestError error;
+
+        SERIALIZABLE(ResponseDataless, id, success, error)
+    };
+
+    template<class T>
+    struct Response : public ResponseDataless {
+        T data;
+
+        SERIALIZABLE(Response<T>, id, success, error, data)
+    };
+
+    template<class T>
+    using RequestCallback = std::function<void(FactorioInstance&, const Response<T>&)>;
+    using RequestDatalessCallback = std::function<void(FactorioInstance&, const ResponseDataless&)>;
+
+    struct EventDataless {
+        uint32_t id;
+        std::string name;
+    };
+
+    template<class T>
+    struct Event : public EventDataless {
+        T data;
+    };
+
     class FactorioInstance : public QObject {
         Q_OBJECT
 

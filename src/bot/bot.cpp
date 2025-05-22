@@ -2,6 +2,15 @@
 
 namespace ComputerPlaysFactorio {
 
+    void Bot::Test() {
+        MapPosition pos(0, 0);
+        QueueInstruction<Walk>(pos, pos = MapPosition(10, 10));
+        QueueInstruction<Walk>(pos, pos = MapPosition(0, 0));
+        QueueInstruction<Walk>(pos, pos = MapPosition(10, 0));
+        QueueInstruction<Walk>(pos, pos = MapPosition(0, 10));
+        QueueInstruction<Walk>(pos, pos = MapPosition(5, 9));
+    }
+
     Bot::Bot() : m_instance(FactorioInstance::GRAPHICAL) {
         m_instance.connect(&m_instance, &FactorioInstance::Terminated, [this] {
             Stop();
@@ -19,8 +28,19 @@ namespace ComputerPlaysFactorio {
     }
    
     void Bot::Stop() {
+        ClearQueue();
         m_exit = true;
         m_instance.Stop();
+        m_instructionsCond.notify_all();
+    }
+
+    void Bot::ClearQueue() {
+        std::unique_lock lock(m_instructionsMutex);
+        for (auto &i : m_instructions) {
+            i->Cancel();
+        }
+        m_instructions.clear();
+        if (m_currentWaiter) m_currentWaiter->Unlock(false);
     }
 
     bool Bot::Join(int ms) {
@@ -35,36 +55,24 @@ namespace ComputerPlaysFactorio {
     void Bot::Loop() {
         while(!m_exit) {
             {
-                std::unique_lock lock(m_loopMutex);
-                m_loopCond.wait(lock, [this] { return !m_instructions.empty() || m_exit; });
+                std::unique_lock lock(m_instructionsMutex);
+                m_instructionsCond.wait(lock, [this] { return !m_instructions.empty() || m_exit; });
             }
 
             if (m_exit) break;
 
-            std::shared_ptr<Waiter> waiter;
+            m_currentWaiter = m_instructions.front()->Send(m_instance);
+            if (m_currentWaiter == nullptr) {
+                g_error << "TODO line: " << __LINE__ << std::endl;
+                exit(1);
+            }
+
             {
-                std::unique_lock lock(m_loopMutex);
-                waiter = m_instructions.front()->Send(m_instance);
-                if (waiter == nullptr) {
-                    g_error << "TODO line: " << __LINE__ << std::endl;
-                    exit(1);
-                }
+                std::scoped_lock lock(m_instructionsMutex);
                 m_instructions.pop_front();
             }
-            waiter->Wait();
+
+            m_currentWaiter->Wait();
         }
-    }
-
-    bool Bot::QueueInstruction(const Instruction &instruction) {
-        if (!Running()) return false;
-
-        {
-            std::unique_lock lock(m_loopMutex);
-            m_instructions.push_back(std::make_unique<Instruction>(instruction));
-            m_instructions.back()->Precompute();
-        }
-        m_loopCond.notify_all();
-
-        return true;
     }
 }
