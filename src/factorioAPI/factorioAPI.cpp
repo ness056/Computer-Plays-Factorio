@@ -102,6 +102,22 @@ namespace ComputerPlaysFactorio {
             std::filesystem::copy(GetDataPath() / "config.ini", GetConfigPath(), std::filesystem::copy_options::overwrite_existing);
         }
     }
+    
+    void FactorioInstance::RegisterEvents() {
+        RegisterEvent("UpdatePathfinderData", [this](const Event<UpdatePathfinderData> &e) {
+            for (const auto &pos : e.data.add) {
+                if (!m_pathfinderData.contains(pos)) m_pathfinderData.insert(pos);
+            } 
+            
+            for (const auto &pos : e.data.remove) {
+                if (m_pathfinderData.contains(pos)) m_pathfinderData.erase(pos);
+            }
+        });
+
+        RegisterEvent("ClearPathfinderData", [this](const EventDataless&) {
+            m_pathfinderData.clear();
+        });
+    }
 
     void FactorioInstance::EditConfig(const std::string &category, const std::string &name, const std::string &value) {
         const auto config = GetConfigPath();
@@ -235,12 +251,44 @@ namespace ComputerPlaysFactorio {
                 pos += size;
             }
 
-            // else if (word == "event" && word.length() > 5) {
-            //     g_warning << "event TODO" << std::endl;
-            // }
+            else if (word == "event" && word.length() > 5) {
+                uint32_t size = word.sliced(5).toInt();
+                auto end = bytes.end();
+                if (end - pos - 1 < size) {
+                    g_error << "Event too big: size: " << size << " data: " << std::string(pos, end) << std::endl;
+                    ::exit(1);
+                }
+
+                auto data = QJsonDocument::fromJson(QByteArray(pos, size));
+                if (!data.isObject()) {
+                    g_error << "Event is not a json object: " << std::string(pos, size) << std::endl;
+                }
+
+                EventDataless rDataless;
+                FromJson(data.object(), rDataless);
+                g_info << QByteArray(pos, size).toStdString() << std::endl;
+                if (m_eventHandlers.contains(rDataless.name)) {
+                    m_eventHandlers[rDataless.name](data.object());
+                } else {
+                    g_warring << "No event handler named " << rDataless.name << " is registered." << std::endl;
+                }
+
+                pos += size;
+            }
 
             prevWord = word;
         }
+    }
+
+    void FactorioInstance::RegisterEvent(const std::string &name, EventCallbackDL callback) {
+        assert(callback);
+        m_eventHandlers[name] = [=](const QJsonObject &json) {
+            EventDataless data;
+            FromJson(json, data);
+            ThreadPool::QueueJob([data, callback] {
+                callback(data);
+            });
+        };
     }
 
     void FactorioInstance::StartRCON() {
@@ -331,7 +379,7 @@ namespace ComputerPlaysFactorio {
         return true;
     }
 
-    bool FactorioInstance::SendRequestPrivate(std::string name, uint32_t *id) const {
+    bool FactorioInstance::SendRequestPrivate(const std::string &name, uint32_t *id) const {
         RequestDataless r;
         r.id = s_id++;
         r.name = name;
@@ -342,11 +390,11 @@ namespace ComputerPlaysFactorio {
 
     void FactorioInstance::AddResponseDataless(uint32_t id, RequestDatalessCallback callback) {
         assert(callback);
-        m_pendingRequests[id] = [=, this](const QJsonObject &json) {
+        m_pendingRequests[id] = [=](const QJsonObject &json) {
             ResponseDataless data;
             FromJson(json, data);
-            ThreadPool::QueueJob([this, data, callback] {
-                callback(*this, data);
+            ThreadPool::QueueJob([data, callback] {
+                callback(data);
             });
         };
     }

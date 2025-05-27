@@ -2,94 +2,31 @@ local API = require("__computer-plays-factorio__.api")
 local Event = require("__computer-plays-factorio__.event")
 local Math2d = require("__computer-plays-factorio__.math2d")
 local Vector = Math2d.Vector2d
+local Area = Math2d.Area
 
---[[
-/sc
-local pos = {
-    {10, 10},
-    {0, 0},
-    {10, 0},
-    {0, 10},
-    {5, 9}
-}
-local player = game.player
-for k, _ in pairs(pos) do
-    player.surface.request_path({
-        bounding_box = prototypes.entity["character"].collision_box,
-        collision_mask = prototypes.entity["character"].collision_mask,
-        force = "player",
-        start = k == 1 and {0, 0} or pos[k - 1],
-        goal = pos[k],
-        entity_to_ignore = player and player.character,
-        path_resolution_modifier = 0,
-        pathfind_flags = {
-            cache = false
-        }
-    })
-end
+---@param request Request<nil>
+API.AddRequestHandler("PathfinderData", function (request)
+    local surface = game.get_surface(1) --[[@as LuaSurface]]
+    local collision_box = Area.new(prototypes.entity["character"].collision_box)
 
-/sc
-local player = game.player
-player.surface.request_path({
-    bounding_box = prototypes.entity["character"].collision_box,
-    collision_mask = prototypes.entity["character"].collision_mask,
-    force = "player",
-    start = {12, 0},
-    goal = {12, 10},
-    entity_to_ignore = player and player.character,
-    path_resolution_modifier = 0,
-    pathfind_flags = {
-        cache = false
-    }
-})
-]]
-
----@param request Request<{ start: MapPosition.0, goal: MapPosition.0 }>
-local function RequestPath(request)
-    local nauvis = game.get_surface(1) --[[@as LuaSurface]]
-    local player = game.get_player(1)
-
-    local id = nauvis.request_path({
-        bounding_box = prototypes.entity["character"].collision_box,
-        collision_mask = prototypes.entity["character"].collision_mask,
-        force = "player",
-        start = request.data.start,
-        goal = request.data.goal,
-        can_open_gates = true,
-        radius = 0.15,
-        entity_to_ignore = player and player.character,
-        path_resolution_modifier = 0,
-        pathfind_flags = {
-            no_break = true,
-            cache = false
-        }
-    })
-
-    storage.pathRequests[id] = request
-end
-
-API.AddRequestHandler("RequestPath", function (request)
-    log("RequestPath on tick: " .. game.tick)
-    RequestPath(request)
-end)
-
----@param event EventData.on_script_path_request_finished
-Event.OnEvent(defines.events.on_script_path_request_finished, function (event)
-    log("on_script_path_request_finished on tick: " .. game.tick)
-    if (not storage.pathRequests[event.id]) then return end
-
-    local request = storage.pathRequests[event.id]
-    storage.pathRequests[event.id] = nil
-    if (event.try_again_later) then
-        RequestPath(request)
-        return
+    local limits = Area.Zero()
+    for chunk in surface.get_chunks() do
+        limits.left_top = Vector.Min(limits.left_top, chunk.area.left_top)
+        limits.right_bottom = Vector.Max(limits.right_bottom, chunk.area.right_bottom)
     end
 
-    if (event.path) then
-        API.Success(request, event.path)
-    else
-        API.Failed(request, RequestError.NO_PATH_FOUND)
+    local collisions = {}
+    for x = limits.left_top.x, limits.right_bottom.x do
+        for y = limits.left_top.y, limits.right_bottom.y do
+            local pos = { x = x, y = y }
+            local count = surface.count_entities_filtered{area = collision_box + pos, collision_mask = "player"}
+            if count > 0 then
+                table.insert(collisions, pos)
+            end
+        end
     end
+
+    API.Success(request, { limits = limits, collisions = collisions })
 end)
 
 local function EvaluatePath()

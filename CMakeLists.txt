@@ -15,10 +15,13 @@ qt_add_executable(${PROJECT_NAME}
     src/bot/bot.hpp
     src/bot/bot.cpp
     src/bot/instruction.hpp
-    src/bot/instructionGroup.hpp
+    src/bot/task.hpp
+    src/bot/task.cpp
     src/factorioAPI/factorioAPI.hpp
     src/factorioAPI/factorioAPI.cpp
     src/factorioAPI/types.hpp
+    src/algorithms/pathFinder.hpp
+    src/algorithms/pathFinder.cpp
     src/utils/thread.hpp
     src/utils/thread.cpp
     src/utils/utils.hpp

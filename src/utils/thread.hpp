@@ -30,4 +30,21 @@ namespace ComputerPlaysFactorio {
         static std::condition_variable s_workingCond;
         static std::queue<std::function<void()>> s_jobs;
     };
+
+    class Waiter {
+    public:
+        void Lock();
+        void Unlock(bool success = true);
+        bool Wait();
+
+        inline bool IsLocked() {
+            return m_locked;
+        }
+
+    private:
+        bool m_success = true;
+        bool m_locked = false;
+        std::mutex m_mutex;
+        std::condition_variable m_cond;
+    };
 }

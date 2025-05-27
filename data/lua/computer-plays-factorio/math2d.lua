@@ -336,19 +336,19 @@ function Vector2d.Angle(v1, v2)
     return math.acos(Vector2d.Dot(v1, v2) / (v1:Length() * v2:Length()))
 end
 
----@param v1 Vector2d
----@param v2 Vector2d
+---@param v1 MapPosition.0
+---@param v2 MapPosition.0
 ---@return Vector2d
 function Vector2d.Max(v1, v2)
-    Vector2d.VectorsCheck(v1, v2)
+    Vector2d.MapPositionsCheck(v1, v2)
     return Vector2d.new(math.max(v1.x, v2.x), math.max(v1.y, v2.y))
 end
 
----@param v1 Vector2d
----@param v2 Vector2d
+---@param v1 MapPosition.0
+---@param v2 MapPosition.0
 ---@return Vector2d
 function Vector2d.Min(v1, v2)
-    Vector2d.VectorsCheck(v1, v2)
+    Vector2d.MapPositionsCheck(v1, v2)
     return Vector2d.new(math.min(v1.x, v2.x), math.min(v1.y, v2.y))
 end
 

@@ -8,22 +8,17 @@ namespace ComputerPlaysFactorio {
         // The returned shared_ptr may be nullptr if the request could not be sent.
         // For instance, in case the FactorioInstance is not running.
         virtual std::shared_ptr<Waiter> Send(FactorioInstance&) = 0;
-        // This function is used by some Instructions that need to compute some stuff
-        // before Send is called. For instance the Walk instruction may be faster
-        // if the path is calculated beforehand. If Precompute was never called,
-        // the Send function will call it.
-        virtual void Precompute(FactorioInstance&) {
-            m_precomputed = true;
-        }
         virtual constexpr std::string Name() = 0;
-        void Cancel() {
-            m_precomputeWaiter.Unlock(false);
-        }
+    };
 
-    protected:
-        std::mutex m_precomputeMutex;
-        Waiter m_precomputeWaiter;
-        bool m_precomputed = false;
+    // Used to mark the end of a subtask.
+    class EndSubtask {
+        constexpr std::string Name() { return "EndSubtask"; }
+    };
+
+    // Used to mark the end of a task.
+    class Endtask {
+        constexpr std::string Name() { return "Endtask"; }
     };
 
     template<typename ReqType, typename ResType>
@@ -36,12 +31,9 @@ namespace ComputerPlaysFactorio {
             auto waiter = std::make_shared<Waiter>();
             waiter->Lock();
 
-            if (!m_precomputed) Precompute(instance);
-            if (!m_precomputeWaiter.Wait()) return nullptr;
-
             bool success = instance.SendRequestDataRes<ReqType, ResType>(Name(), data,
-                [callback = callback, waiter](FactorioInstance &i, const Response<ResType> &d) {
-                    if (callback) callback(i, d);
+                [callback = callback, waiter](const Response<ResType> &d) {
+                    if (callback) callback(d);
                     waiter->Unlock();
                 }
             );
@@ -64,12 +56,9 @@ namespace ComputerPlaysFactorio {
             auto waiter = std::make_shared<Waiter>();
             waiter->Lock();
 
-            if (!m_precomputed) Precompute(instance);
-            if (!m_precomputeWaiter.Wait()) return nullptr;
-
             bool success = instance.SendRequestDataResDL(Name(), data,
-                [callback = callback, waiter](FactorioInstance &i, const ResponseDataless &d) {
-                    if (callback) callback(i, d);
+                [callback = callback, waiter](const ResponseDataless &d) {
+                    if (callback) callback(d);
                     waiter->Unlock();
                 }
             );
@@ -80,6 +69,12 @@ namespace ComputerPlaysFactorio {
 
         ReqType data;
         RequestDatalessCallback callback;
+    };
+
+    class Walk : public InstructionDL<Path> {
+    public:
+        using InstructionDL::InstructionDL;
+        constexpr std::string Name() { return "Walk"; }
     };
 
     class CraftableAmount : public InstructionRes<std::string, uint32_t> {

@@ -28,6 +28,10 @@ namespace ComputerPlaysFactorio {
             return "(" + std::to_string(x) + "; " + std::to_string(y) + ")";
         }
 
+        inline MapPosition Abs() {
+            return MapPosition(std::abs(x), std::abs(y));
+        }
+
         constexpr MapPosition &operator+=(const MapPosition &rhs) {
             x += rhs.x;
             y += rhs.y;
@@ -36,6 +40,17 @@ namespace ComputerPlaysFactorio {
 
         friend constexpr MapPosition operator+(MapPosition lhs, const MapPosition &rhs) {
             lhs += rhs;
+            return lhs;
+        }
+
+        constexpr MapPosition &operator-=(const MapPosition &rhs) {
+            x -= rhs.x;
+            y -= rhs.y;
+            return *this;
+        }
+
+        friend constexpr MapPosition operator-(MapPosition lhs, const MapPosition &rhs) {
+            lhs -= rhs;
             return lhs;
         }
 
@@ -57,8 +72,22 @@ namespace ComputerPlaysFactorio {
         SERIALIZABLE(MapPosition, x, y)
     };
 
+    struct Area {
+        constexpr Area() = default;
+        constexpr Area(MapPosition topLeft_, MapPosition bottomRight_) :
+            topLeft(topLeft_), bottomRight(bottomRight_) {}
+
+        MapPosition topLeft;
+        MapPosition bottomRight;
+
+        SERIALIZABLE_CUSTOM_NAMES(Area, "top_left", topLeft, "bottom_right", bottomRight);
+    };
+
     // https://lua-api.factorio.com/stable/concepts/PathfinderWaypoint.html
     struct PathfinderWaypoint {
+        PathfinderWaypoint(MapPosition pos_, bool needsDestroyToReach_) :
+            pos(pos_), needsDestroyToReach(needsDestroyToReach_) {}
+
         MapPosition pos;
         bool needsDestroyToReach;
 
@@ -72,5 +101,13 @@ namespace ComputerPlaysFactorio {
         MapPosition goal;
 
         SERIALIZABLE(RequestPathData, start, goal);
+    };
+
+    struct Entity {
+        std::string name;
+        MapPosition position;
+        Area boundingBox;
+
+        SERIALIZABLE(Entity, name, position, boundingBox);
     };
 }

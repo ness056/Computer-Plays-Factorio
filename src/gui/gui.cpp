@@ -27,7 +27,7 @@ namespace ComputerPlaysFactorio {
     }
 
     void MainWindow::CreateCentralWidget() {
-        QPushButton *buttonTest = new QPushButton("Walk");
+        QPushButton *buttonTest = new QPushButton("Test");
         connect(buttonTest, &QPushButton::clicked, [this]() {
             m_bot.Test();
         });

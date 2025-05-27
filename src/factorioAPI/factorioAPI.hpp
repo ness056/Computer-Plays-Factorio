@@ -46,6 +46,7 @@
 #include "../utils/serializer.hpp"
 #include "../utils/thread.hpp"
 #include "../utils/utils.hpp"
+#include "../algorithms/pathFinder.hpp"
 
 /**
  *      Protocol used to communicate with Factorio:
@@ -110,8 +111,8 @@ namespace ComputerPlaysFactorio {
     };
 
     template<class T>
-    using RequestCallback = std::function<void(FactorioInstance&, const Response<T>&)>;
-    using RequestDatalessCallback = std::function<void(FactorioInstance&, const ResponseDataless&)>;
+    using RequestCallback = std::function<void(const Response<T>&)>;
+    using RequestDatalessCallback = std::function<void(const ResponseDataless&)>;
 
     struct EventDataless {
         uint32_t id;
@@ -148,6 +149,7 @@ namespace ComputerPlaysFactorio {
             Stop();
             Join();
         }
+        void RegisterEvents();
 
         FactorioInstance(const FactorioInstance&)  = delete;
         FactorioInstance(const FactorioInstance&&) = delete;
@@ -181,6 +183,7 @@ namespace ComputerPlaysFactorio {
         inline bool SetGameSpeed(float ticks) const { return SendRequestData("GameSpeed", ticks); }
         inline bool PauseToggle() const { return SendRequest("PauseToggle"); }
         inline bool Save(const std::string &name) const { return SendRequestData("Save", name); }
+        inline PathfinderData GetPathFinderData() { return m_pathfinderData; }
 
         const Type instanceType;
 
@@ -214,12 +217,32 @@ namespace ComputerPlaysFactorio {
 
         std::map<uint32_t, std::function<void(const QJsonObject &data)>> m_pendingRequests;
 
-        bool SendRequestPrivate(std::string name, uint32_t *id = nullptr) const;
+        bool SendRequestPrivate(const std::string &name, uint32_t *id = nullptr) const;
         template<class T>
-        bool SendRequestPrivate(std::string name, const T &data, uint32_t *id = nullptr) const;
+        bool SendRequestPrivate(const std::string &name, const T &data, uint32_t *id = nullptr) const;
         template<class R>
         void AddResponse(uint32_t id, RequestCallback<R> callback);
         void AddResponseDataless(uint32_t id, RequestDatalessCallback callback);
+
+        std::map<std::string, std::function<void(const QJsonObject &data)>> m_eventHandlers;
+
+        template<typename T>
+        using EventCallback = std::function<void(const Event<T>&)>;
+        using EventCallbackDL = std::function<void(const EventDataless&)>;
+
+        template<typename T>
+        void RegisterEvent(const std::string &name, EventCallback<T>);
+        void RegisterEvent(const std::string &name, EventCallbackDL);
+
+        struct UpdatePathfinderData {
+            std::vector<MapPosition> add;
+            std::vector<MapPosition> remove;
+
+            SERIALIZABLE(UpdatePathfinderData, add, remove);
+        };
+
+        PathfinderData m_pathfinderData;
+        void UpdatePathfinderDataHandler(const Event<UpdatePathfinderData>&);
 
         void StartRCON();
         void CloseRCON();
@@ -231,7 +254,7 @@ namespace ComputerPlaysFactorio {
     };
 
     template <class T>
-    bool FactorioInstance::SendRequestPrivate(std::string name, const T &data, uint32_t *id) const {
+    bool FactorioInstance::SendRequestPrivate(const std::string &name, const T &data, uint32_t *id) const {
         RequestDataless r;
         r.id = s_id++;
         r.name = name;
@@ -244,11 +267,11 @@ namespace ComputerPlaysFactorio {
     template<class R>
     void FactorioInstance::AddResponse(uint32_t id, RequestCallback<R> callback) {
         assert(callback);
-        m_pendingRequests[id] = [=, this](const QJsonObject &json) {
+        m_pendingRequests[id] = [=](const QJsonObject &json) {
             Response<R> data;
             FromJson(json, data);
-            ThreadPool::QueueJob([this, data, callback] {
-                callback(*this, data);
+            ThreadPool::QueueJob([data, callback] {
+                callback(data);
             });
         };
     }
@@ -283,5 +306,17 @@ namespace ComputerPlaysFactorio {
 
         AddResponseDataless(id, callback);
         return true;
+    }
+
+    template<typename T>
+    void FactorioInstance::RegisterEvent(const std::string &name, EventCallback<T> callback) {
+        assert(callback);
+        m_eventHandlers[name] = [=](const QJsonObject &json) {
+            Event<T> data;
+            FromJson(json, data);
+            ThreadPool::QueueJob([data, callback] {
+                callback(data);
+            });
+        };
     }
 }

@@ -4,11 +4,7 @@ namespace ComputerPlaysFactorio {
 
     void Bot::Test() {
         MapPosition pos(0, 0);
-        QueueInstruction<Walk>(pos, pos = MapPosition(10, 10));
-        QueueInstruction<Walk>(pos, pos = MapPosition(0, 0));
-        QueueInstruction<Walk>(pos, pos = MapPosition(10, 0));
-        QueueInstruction<Walk>(pos, pos = MapPosition(0, 10));
-        QueueInstruction<Walk>(pos, pos = MapPosition(5, 9));
+        m_tasks.push_back(std::make_unique<BuildBurnerCity>(&m_instance, pos));
     }
 
     Bot::Bot() : m_instance(FactorioInstance::GRAPHICAL) {
@@ -31,15 +27,11 @@ namespace ComputerPlaysFactorio {
         ClearQueue();
         m_exit = true;
         m_instance.Stop();
-        m_instructionsCond.notify_all();
     }
 
     void Bot::ClearQueue() {
-        std::unique_lock lock(m_instructionsMutex);
-        for (auto &i : m_instructions) {
-            i->Cancel();
-        }
-        m_instructions.clear();
+        std::unique_lock lock(m_loopMutex);
+        m_tasks.clear();
         if (m_currentWaiter) m_currentWaiter->Unlock(false);
     }
 
@@ -54,24 +46,22 @@ namespace ComputerPlaysFactorio {
 
     void Bot::Loop() {
         while(!m_exit) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+            std::shared_ptr<Instruction> instruction;
             {
-                std::unique_lock lock(m_instructionsMutex);
-                m_instructionsCond.wait(lock, [this] { return !m_instructions.empty() || m_exit; });
+                std::unique_lock lock(m_loopMutex);
+                if (m_tasks.empty()) continue;
+                instruction = m_tasks.front()->PopInstruction();
             }
 
-            if (m_exit) break;
+            if (instruction == nullptr) continue;
 
-            m_currentWaiter = m_instructions.front()->Send(m_instance);
+            m_currentWaiter = instruction->Send(m_instance);
             if (m_currentWaiter == nullptr) {
                 g_error << "TODO line: " << __LINE__ << std::endl;
                 exit(1);
             }
-
-            {
-                std::scoped_lock lock(m_instructionsMutex);
-                m_instructions.pop_front();
-            }
-
             m_currentWaiter->Wait();
         }
     }
