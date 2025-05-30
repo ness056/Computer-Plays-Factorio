@@ -4,6 +4,28 @@ local Math2d = require("__computer-plays-factorio__.math2d")
 local Vector = Math2d.Vector2d
 local Area = Math2d.Area
 
+Event.OnInit(function ()
+    local surface = game.get_surface(1) --[[@as LuaSurface]]
+    local d = {}
+    local collision_box = Area.new(prototypes.entity["character"].collision_box)
+
+    for chunk in surface.get_chunks() do
+        local area = chunk.area
+        for x = area.left_top.x, area.right_bottom.x do
+            for y = area.left_top.y, area.right_bottom.y do
+                local pos = { x = x, y = y }
+                surface.can_place_entity{name="character", position=pos}
+                local count = surface.count_entities_filtered{area = collision_box + pos, collision_mask = "player"}
+                if count > 0 then
+                    table.insert(d, pos)
+                end
+            end
+        end
+    end
+
+    API.InvokeEvent("SetPathfinderData", d)
+end)
+
 ---@param request Request<nil>
 API.AddRequestHandler("PathfinderData", function (request)
     local surface = game.get_surface(1) --[[@as LuaSurface]]

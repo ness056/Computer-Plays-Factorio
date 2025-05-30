@@ -117,11 +117,15 @@ namespace ComputerPlaysFactorio {
     struct EventDataless {
         uint32_t id;
         std::string name;
+
+        SERIALIZABLE(EventDataless, id, name);
     };
 
     template<class T>
     struct Event : public EventDataless {
         T data;
+
+        SERIALIZABLE(Event, id, name, data);
     };
 
     class FactorioInstance : public QObject {

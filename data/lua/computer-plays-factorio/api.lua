@@ -99,8 +99,15 @@ commands.add_command("request", nil, function (data)
     } --[[@as Request<any>]])
 end)
 
-function API.InvokeEvent()
-
+---@param name string
+---@param data any
+function API.InvokeEvent(name, data)
+    local d = helpers.table_to_json({
+        name = name,
+        id = API.GetId(),
+        data = data
+    })
+    print("event" .. d:len() .. " " .. d)
 end
 
 Event.OnInit(function ()

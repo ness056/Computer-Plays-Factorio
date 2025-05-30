@@ -104,19 +104,24 @@ namespace ComputerPlaysFactorio {
     }
     
     void FactorioInstance::RegisterEvents() {
-        RegisterEvent("UpdatePathfinderData", [this](const Event<UpdatePathfinderData> &e) {
-            for (const auto &pos : e.data.add) {
-                if (!m_pathfinderData.contains(pos)) m_pathfinderData.insert(pos);
-            } 
-            
-            for (const auto &pos : e.data.remove) {
-                if (m_pathfinderData.contains(pos)) m_pathfinderData.erase(pos);
+        RegisterEvent<UpdatePathfinderData>("UpdatePathfinderData",
+            [this](const Event<UpdatePathfinderData> &e) {
+                for (const auto &pos : e.data.add) {
+                    if (!m_pathfinderData.contains(pos)) m_pathfinderData.insert(pos);
+                } 
+                
+                for (const auto &pos : e.data.remove) {
+                    if (m_pathfinderData.contains(pos)) m_pathfinderData.erase(pos);
+                }
             }
-        });
+        );
 
-        RegisterEvent("ClearPathfinderData", [this](const EventDataless&) {
-            m_pathfinderData.clear();
-        });
+        RegisterEvent<std::vector<MapPosition>>("SetPathfinderData",
+            [this](const Event<std::vector<MapPosition>> &e) {
+                m_pathfinderData.clear();
+                m_pathfinderData.insert(e.data.begin(), e.data.end());
+            }
+        );
     }
 
     void FactorioInstance::EditConfig(const std::string &category, const std::string &name, const std::string &value) {

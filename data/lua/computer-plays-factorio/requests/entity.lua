@@ -125,3 +125,20 @@ Instruction.AddRangedRequest("Rotate", function (request)
 
     API.Success(request, entity.direction)
 end, getAreaReachEntity)
+
+---@param request Request<EntitySearchFilters>
+API.AddRequestHandler("FindEntitiesFiltered", function (request)
+    local surface = game.get_surface(1) --[[@as LuaSurface]]
+    local entities = surface.find_entities_filtered(request.data)
+    local r = {}
+
+    for k, entity in pairs(entities) do
+        table.insert(r, {
+            name = entity.name,
+            position = entity.position,
+            boundingBox = entity.bounding_box
+        })
+    end
+
+    API.Success(request, r)
+end)

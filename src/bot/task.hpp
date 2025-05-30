@@ -1,25 +1,8 @@
 #pragma once
 
-#include "instruction.hpp"
+#include "subtask.hpp"
 
 namespace ComputerPlaysFactorio {
-
-    class Subtask {
-    public:
-        // Must be used kinda like make_unique or make_shared
-        template<typename T, typename ...Types, std::enable_if_t<std::is_base_of_v<Instruction, T>, bool> = true>
-        inline void QueueInstruction(Types &&...args) {
-            m_instructions.push_back(std::make_shared<T>(args...));
-        }
-
-        std::shared_ptr<Instruction> PopInstruction();
-        inline size_t InstructionCount() {
-            return m_instructions.size();
-        }
-
-    private:
-        std::deque<std::shared_ptr<Instruction>> m_instructions;
-    };
 
     class Task {
     public:
@@ -49,7 +32,18 @@ namespace ComputerPlaysFactorio {
     class BuildBurnerCity : public Task {
     public:
         BuildBurnerCity(FactorioInstance *computingInstance, MapPosition &playerPos) : Task(computingInstance) {
-            QueueMineEntities(playerPos, {});
+            std::vector<Entity> entities;
+            Waiter w;
+            w.Lock();
+            m_instance->SendRequestDataRes<EntitySearchFilters, std::vector<Entity>>(
+                "FindEntitiesFiltered",
+                EntitySearchFilters{.name = {"big-rock"}},
+                [&entities, &w](const Response<std::vector<Entity>> &res) {
+                    entities = res.data;
+                    w.Unlock();
+                }
+            );
+            QueueMineEntities(playerPos, entities);
         }
     };
 }
