@@ -84,6 +84,7 @@ namespace ComputerPlaysFactorio {
     };
 
     enum RequestError {
+        FACTORIO_EXITED = 0,
         BUSY = 1,
         NO_PATH_FOUND = 2,
         EMPTY_PATH = 3,
@@ -111,8 +112,8 @@ namespace ComputerPlaysFactorio {
     };
 
     template<class T>
-    using RequestCallback = std::function<void(const Response<T>&)>;
-    using RequestDatalessCallback = std::function<void(const ResponseDataless&)>;
+    using ResponseCallback = std::function<void(const Response<T>&)>;
+    using ResponseDatalessCallback = std::function<void(const ResponseDataless&)>;
 
     struct EventDataless {
         uint32_t id;
@@ -176,17 +177,18 @@ namespace ComputerPlaysFactorio {
         template<class T>
         bool SendRequestData(const std::string &name, const T &data) const;
         template<class R>
-        bool SendRequestRes(const std::string &name, RequestCallback<R> callback);
+        bool SendRequestRes(const std::string &name, ResponseCallback<R> callback);
         template<class T, class R>
-        bool SendRequestDataRes(const std::string &name, const T &data, RequestCallback<R> callback);
-        bool SendRequestResDL(const std::string &name, RequestDatalessCallback callback);
+        bool SendRequestDataRes(const std::string &name, const T &data, ResponseCallback<R> callback);
+        bool SendRequestResDL(const std::string &name, ResponseDatalessCallback callback);
         template<class T>
-        bool SendRequestDataResDL(const std::string &name, const T &data, RequestDatalessCallback callback);
+        bool SendRequestDataResDL(const std::string &name, const T &data, ResponseDatalessCallback callback);
 
         inline bool Broadcast(const std::string &msg) const { return SendRequestData("Broadcast", msg); }
         inline bool SetGameSpeed(float ticks) const { return SendRequestData("GameSpeed", ticks); }
         inline bool PauseToggle() const { return SendRequest("PauseToggle"); }
         inline bool Save(const std::string &name) const { return SendRequestData("Save", name); }
+        bool GetPlayerPosition(MapPosition &out);
         inline PathfinderData GetPathFinderData() { return m_pathfinderData; }
 
         const Type instanceType;
@@ -225,8 +227,8 @@ namespace ComputerPlaysFactorio {
         template<class T>
         bool SendRequestPrivate(const std::string &name, const T &data, uint32_t *id = nullptr) const;
         template<class R>
-        void AddResponse(uint32_t id, RequestCallback<R> callback);
-        void AddResponseDataless(uint32_t id, RequestDatalessCallback callback);
+        void AddResponse(uint32_t id, ResponseCallback<R> callback);
+        void AddResponseDataless(uint32_t id, ResponseDatalessCallback callback);
 
         std::map<std::string, std::function<void(const QJsonObject &data)>> m_eventHandlers;
 
@@ -269,7 +271,7 @@ namespace ComputerPlaysFactorio {
     }
 
     template<class R>
-    void FactorioInstance::AddResponse(uint32_t id, RequestCallback<R> callback) {
+    void FactorioInstance::AddResponse(uint32_t id, ResponseCallback<R> callback) {
         assert(callback);
         m_pendingRequests[id] = [=](const QJsonObject &json) {
             Response<R> data;
@@ -286,7 +288,7 @@ namespace ComputerPlaysFactorio {
     }
 
     template<class R>
-    bool FactorioInstance::SendRequestRes(const std::string &name, RequestCallback<R> callback) {
+    bool FactorioInstance::SendRequestRes(const std::string &name, ResponseCallback<R> callback) {
         uint32_t id;
         if (!SendRequestPrivate(name, &id)) return false;
 
@@ -295,7 +297,7 @@ namespace ComputerPlaysFactorio {
     }
 
     template<class T, class R>
-    bool FactorioInstance::SendRequestDataRes(const std::string &name, const T &data, RequestCallback<R> callback) {
+    bool FactorioInstance::SendRequestDataRes(const std::string &name, const T &data, ResponseCallback<R> callback) {
         uint32_t id;
         if (!SendRequestPrivate(name, data, &id)) return false;
 
@@ -304,7 +306,7 @@ namespace ComputerPlaysFactorio {
     }
 
     template<class T>
-    bool FactorioInstance::SendRequestDataResDL(const std::string &name, const T &data, RequestDatalessCallback callback) {
+    bool FactorioInstance::SendRequestDataResDL(const std::string &name, const T &data, ResponseDatalessCallback callback) {
         uint32_t id;
         if (!SendRequestPrivate(name, data, &id)) return false;
 

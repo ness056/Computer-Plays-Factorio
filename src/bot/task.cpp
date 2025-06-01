@@ -2,59 +2,47 @@
 
 namespace ComputerPlaysFactorio {
 
-    std::shared_ptr<Instruction> Subtask::PopInstruction() {
+    Instruction *Task::GetInstruction() {
+        std::unique_lock lock(m_mutex);
         if (m_instructions.empty()) return nullptr;
-        auto instruction = m_instructions.front();
-        m_instructions.pop_back();
-        return instruction;
+        return &m_instructions.front();
     }
 
-    std::shared_ptr<Instruction> Task::PopInstruction() {
+    void Task::PopInstruction() {
         std::unique_lock lock(m_mutex);
-        return PopInstructionNoLock();
+        if (m_instructions.empty()) return;
+        m_instructions.pop_front();
     }
 
-    std::shared_ptr<Instruction> Task::PopInstructionNoLock() {
-        if (m_subtasks.empty()) return nullptr;
-        auto &subtask = m_subtasks.front();
-        
-        auto instruction = subtask.PopInstruction();
-        if (instruction->Name() == "EndSubtask") {
-            m_subtasks.pop_front();
-            return PopInstructionNoLock();
-        } else {
-            return instruction;
-        }
-    }
-
-    Subtask &Task::QueueSubtask() {
+    size_t Task::InstructionCount() const {
         std::unique_lock lock(m_mutex);
-        m_subtasks.emplace_back();
-        return m_subtasks.back();
+        m_instructions.size();
     }
 
-    size_t Task::InstructionCount() {
+    void Task::QueueInstruction(const Instruction::Handler &handler) {
         std::unique_lock lock(m_mutex);
-        size_t sum = 0;
-        for (auto &subtask : m_subtasks) {
-            sum += subtask.InstructionCount();
-        }
-        return sum;
+        m_instructions.emplace_back(handler);
+        m_eventManager->NotifyNewInstruction();
     }
     
-    void Task::QueueMineEntities(MapPosition &playerPos, const std::vector<Entity> &entities, SubtaskCallback) {
-        auto &subtask = QueueSubtask();
-
+    void Task::QueueMineEntities(const std::vector<Entity> &entities) {
         std::vector<std::tuple<MapPosition, float>> points;
         for (auto &entity : entities) {
             points.emplace_back(entity.position, 5);
         }
 
         PathfinderData pathfinderData = m_instance->GetPathFinderData();
-        auto paths = FindStepPath(pathfinderData, playerPos, points);
-        for (auto &path : paths) {
-            subtask.QueueInstruction<Walk>(std::get<Path>(path));
-        }
-        playerPos = std::get<MapPosition>(*paths.crbegin());
+        auto paths = FindStepPath(pathfinderData, {0, 0}, points);
+
+        QueueInstruction([this, paths](FactorioInstance &instance) {
+            SharedWaiter waiter;
+
+            for (auto &path : paths) {
+                auto &group = subtask.QueueGroup();
+                group.SetPath(std::get<Path>(path));
+            }
+
+            return waiter;
+        });
     }
 }

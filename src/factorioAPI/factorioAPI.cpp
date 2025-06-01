@@ -94,12 +94,20 @@ namespace ComputerPlaysFactorio {
         });
 
         connect(&m_process, &QProcess::finished, [this](int exitCode, QProcess::ExitStatus status) {
+            for (auto &[id, request] : m_pendingRequests) {
+                auto res = ResponseDataless{.id = id, .success = false, .error = FACTORIO_EXITED};
+                auto json = ToJson(res);
+                request(json);
+            }
+            m_pendingRequests.clear();
+
             emit Terminated(*this, exitCode, status);
         });
 
         std::filesystem::create_directory(GetInstanceTempPath());
-        if (std::filesystem::exists(GetDataPath() / "config.ini")) {
-            std::filesystem::copy(GetDataPath() / "config.ini", GetConfigPath(), std::filesystem::copy_options::overwrite_existing);
+        if (std::filesystem::exists(GetDataPath() / "factorioConfig.ini")) {
+            std::filesystem::copy(GetDataPath() / "factorioConfig.ini", 
+                GetConfigPath(), std::filesystem::copy_options::overwrite_existing);
         }
     }
     
@@ -393,7 +401,7 @@ namespace ComputerPlaysFactorio {
         return SendRCON("/request " + QJsonDocument(json).toJson(QJsonDocument::Compact).toStdString());
     }
 
-    void FactorioInstance::AddResponseDataless(uint32_t id, RequestDatalessCallback callback) {
+    void FactorioInstance::AddResponseDataless(uint32_t id, ResponseDatalessCallback callback) {
         assert(callback);
         m_pendingRequests[id] = [=](const QJsonObject &json) {
             ResponseDataless data;
@@ -408,11 +416,25 @@ namespace ComputerPlaysFactorio {
         return SendRequestPrivate(name);
     }
 
-    bool FactorioInstance::SendRequestResDL(const std::string &name, RequestDatalessCallback callback) {
+    bool FactorioInstance::SendRequestResDL(const std::string &name, ResponseDatalessCallback callback) {
         uint32_t id;
         if (!SendRequestPrivate(name, &id)) return false;
 
         AddResponseDataless(id, callback);
         return true;
+    }
+
+    bool FactorioInstance::GetPlayerPosition(MapPosition &out) {
+        Waiter waiter;
+        WaiterLock lock(waiter);
+
+        bool success = SendRequestRes<MapPosition>("GetPlayerPosition",
+            [&lock, &out](const Response<MapPosition> &res) {
+                out = res.data;
+                lock.Unlock();
+            }
+        );
+        if (success) waiter.Wait();
+        return success;
     }
 }

@@ -83,20 +83,40 @@ namespace ComputerPlaysFactorio {
         s_threads.clear();
     }
 
-    void Waiter::Lock() {
+    bool Waiter::Wait() {
         std::unique_lock lock(m_mutex);
-        m_locked = true;
+        m_cond.wait(lock, [this] { return m_lockCount == 0; });
+        return m_forced;
     }
 
-    void Waiter::Unlock(bool success) {
-        m_success = success;
-        m_locked = false;
+    void Waiter::ForceUnlock() {
+        std::unique_lock lock(m_mutex);
+        m_lockCount = 0;
+        m_forced = true;
         m_cond.notify_all();
     }
 
-    bool Waiter::Wait() {
+    bool Waiter::IsLocked() {
         std::unique_lock lock(m_mutex);
-        m_cond.wait(lock, [this] { return !m_locked; });
-        return m_success;
+        return m_lockCount != 0;
+    }
+
+    int Waiter::LockCount() {
+        std::unique_lock lock(m_mutex);
+        return m_lockCount;
+    }
+
+    void Waiter::Lock() {
+        std::unique_lock lock(m_mutex);
+        m_lockCount++;
+    }
+
+    void Waiter::Unlock() {
+        std::unique_lock lock(m_mutex);
+        if (m_lockCount > 0) m_lockCount--;
+        if (m_lockCount == 0) {
+            m_forced = false;
+            m_cond.notify_all();
+        }
     }
 }

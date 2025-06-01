@@ -3,34 +3,31 @@
 #include <deque>
 #include <type_traits>
 
-#include "../factorioAPI/factorioAPI.hpp"
 #include "task.hpp"
 
 /**
  *      Definitions:
  * 
  * - Instructions are the lowest level of abstraction for the bot to control the player.
- *   The are more or less equivalent to the Factorio-TAS-Generator's tasks. If one
- *   instruction fails, the subtask will be need to be regenerated. (see subtask definition)
- * 
- * - Subtasks are an intermediate level of abstraction between instructions and tasks.
- *   The execution of a subtask may be interrupted (See interruption definition).
- *   When a subtask is interrupted or if one instruction fails, the subtask may need to
- *   regenerate its instruction queue. Subtasks should be independent from one another,
- *   meaning if one subtask fails and regenerate its queue, other subtasks should not be
- *   affected.
+ *   Instructions are generated can be generated either by tasks or by the event manager.
+ *   The execution of an instruction will never be interrupted (See interruption definition).
  * 
  * - Tasks are the highest level of abstraction to control the bot and are directly
- *   created by the user. Tasks should be seed independent, meaning no coordinates should
- *   be in a task's arguments.
+ *   created by the user.
+ *   The execution of a task may be interrupted (See interruption definition).
+ *   When a task is interrupted or if one instruction fails, the task may need to
+ *   regenerate its instruction queue. Tasks should be independent from one another,
+ *   meaning if one task fails and regenerate its queue, other tasks should not be
+ *   affected.
  *   For instance, one task could be: Build a burner city with 15 iron miners, 6 coppers,
  *   4 stones and 12 coals.
  * 
- * - The bot may interrupt the current subtask in order to execute another more important
- *   subtask. When the interruption is done, the bot will resume the execution of paused
- *   subtask and notify it that it has been interrupted. Interruptions are raised
- *   by events, which are sent by the lua mod. For instance when a biter attack is
- *   triggered or if a power black out happens.
+ * - The bot may interrupt the current task in order to execute another more important
+ *   task. When the interruption is done, the bot will resume the execution of paused
+ *   task and notify it that it had been interrupted. Interruptions are raised
+ *   by the event manager.
+ *   For instance an interruption will be raised if a biter attack is triggered
+ *   or if power blacks out.
  */
 
 namespace ComputerPlaysFactorio {
@@ -56,10 +53,13 @@ namespace ComputerPlaysFactorio {
 
         std::thread m_loopThread;
         std::mutex m_loopMutex;
+        std::condition_variable m_loopCond;
         bool m_exit;
 
+        EventManager m_eventManager;
+
         std::deque<std::unique_ptr<Task>> m_tasks;
-        std::shared_ptr<Waiter> m_currentWaiter;
+        SharedWaiter m_instructionWaiter;
 
         FactorioInstance m_instance;
     };

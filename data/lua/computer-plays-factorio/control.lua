@@ -15,6 +15,23 @@ commands.add_command("log-storage", "", function (c)
     log(serpent.block(storage))
 end)
 
+commands.add_command("profile_command", "Same as /c but measures the time to execute the lua command", function (c)
+    local printFun = game.print
+    if game.player then
+        printFun = game.player.print
+    end
+
+    local fun, err = load(c.parameter, nil, "t")
+    if fun then
+        local profiler = helpers.create_profiler()
+        fun()
+        profiler.stop()
+        printFun({"Measured time: ", profiler})
+    else
+        printFun(err)
+    end
+end)
+
 ---@param request Request<string>
 API.AddRequestHandler("Broadcast", function (request)
     game.print(request.data)
@@ -30,6 +47,5 @@ API.AddRequestHandler("PauseToggle", function (request)
 end)
 
 API.AddRequestHandler("Save", function (request)
-    if (game.is_multiplayer()) then game.auto_save(request.data)
-    else game.server_save(request.data) end
+    game.auto_save(request.data)
 end)

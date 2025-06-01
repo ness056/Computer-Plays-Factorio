@@ -11,6 +11,10 @@ namespace ComputerPlaysFactorio {
         m_instance.connect(&m_instance, &FactorioInstance::Terminated, [this] {
             Stop();
         });
+
+        m_eventManager.connect(&m_eventManager, &EventManager::NewInstruction, [this] {
+
+        });
     }
    
     bool Bot::Start(std::string *message) {
@@ -32,7 +36,7 @@ namespace ComputerPlaysFactorio {
     void Bot::ClearQueue() {
         std::unique_lock lock(m_loopMutex);
         m_tasks.clear();
-        if (m_currentWaiter) m_currentWaiter->Unlock(false);
+        if (m_instructionWaiter) m_instructionWaiter->ForceUnlock();
     }
 
     bool Bot::Join(int ms) {
@@ -46,23 +50,26 @@ namespace ComputerPlaysFactorio {
 
     void Bot::Loop() {
         while(!m_exit) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-            std::shared_ptr<Instruction> instruction;
             {
                 std::unique_lock lock(m_loopMutex);
+                m_loopCond.wait(lock);
+            }
+            if (m_exit) break;
+
+            {
+                std::scoped_lock lock(m_loopMutex);
+
                 if (m_tasks.empty()) continue;
-                instruction = m_tasks.front()->PopInstruction();
-            }
+                auto instruction = m_tasks.front()->GetInstruction();
+                if (!instruction) continue;
 
-            if (instruction == nullptr) continue;
-
-            m_currentWaiter = instruction->Send(m_instance);
-            if (m_currentWaiter == nullptr) {
-                g_error << "TODO line: " << __LINE__ << std::endl;
-                exit(1);
+                m_instructionWaiter = instruction->Call(m_instance);
+                if (m_instructionWaiter == nullptr) {
+                    g_error << "TODO line: " << __LINE__ << std::endl;
+                    exit(1);
+                }
             }
-            m_currentWaiter->Wait();
+            if (!m_exit) m_instructionWaiter->Wait();
         }
     }
 }

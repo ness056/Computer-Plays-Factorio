@@ -1,37 +1,48 @@
 #pragma once
 
-#include "subtask.hpp"
+#include "instruction.hpp"
 
 namespace ComputerPlaysFactorio {
 
     class Task {
     public:
-        std::shared_ptr<Instruction> PopInstruction();
-        size_t InstructionCount();
+        Instruction *GetInstruction();
+        void PopInstruction();
+        size_t InstructionCount() const;
 
-    protected:
-        Task(FactorioInstance *computingInstance) {
-            assert(computingInstance && "nullptr instance");
-            m_instance = computingInstance;
+        const std::deque<Instruction> &GetAllInstruction() const {
+            return m_instructions;
         }
 
-        std::shared_ptr<Instruction> PopInstructionNoLock();
+        inline size_t InstructionCount() const {
+            m_instructions.size();
+        }
 
-        Subtask &QueueSubtask();
+    protected:
+        Task(FactorioInstance *instance, EventManager *eventManager) {
+            assert(eventManager && "nullptr event manager");
+            assert(instance && "nullptr instance");
+            m_eventManager = eventManager;
+            m_instance = instance;
+        }
+        
+        void QueueInstruction(const Instruction::Handler&);
 
-        using SubtaskCallback = std::function<void()>;
         void QueueMineEntities(MapPosition &playerPos,
-            const std::vector<Entity> &entities, SubtaskCallback = nullptr);
+            const std::vector<Entity> &entities);
 
         FactorioInstance *m_instance;
+        EventManager *m_eventManager;
 
-        std::deque<Subtask> m_subtasks;
+        std::deque<Instruction> m_instructions;
         std::mutex m_mutex;
     };
 
     class BuildBurnerCity : public Task {
     public:
-        BuildBurnerCity(FactorioInstance *computingInstance, MapPosition &playerPos) : Task(computingInstance) {
+        BuildBurnerCity(FactorioInstance *instance, EventManager *eventManager)
+            : Task(instance, eventManager) {
+
             std::vector<Entity> entities;
             Waiter w;
             w.Lock();
@@ -43,7 +54,7 @@ namespace ComputerPlaysFactorio {
                     w.Unlock();
                 }
             );
-            QueueMineEntities(playerPos, entities);
+            QueueMineEntities(entities);
         }
     };
 }

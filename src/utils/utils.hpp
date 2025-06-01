@@ -30,10 +30,10 @@ namespace ComputerPlaysFactorio {
     public:
         LoggingStream(const std::string &name);
 
-        LoggingStream &operator<<(std::ostream&(*endl)(std::ostream&)) {
-            LoggingStream::file << endl;
-            std::cout << endl;
-            if (endl == std::endl<char, std::char_traits<char>>) {
+        LoggingStream &operator<<(std::ostream&(*f)(std::ostream&)) {
+            LoggingStream::file << f;
+            std::cout << f;
+            if (f == std::endl<char, std::char_traits<char>>) {
                 newLine = true;
             }
             return *this;

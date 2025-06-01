@@ -33,18 +33,53 @@ namespace ComputerPlaysFactorio {
 
     class Waiter {
     public:
-        void Lock();
-        void Unlock(bool success = true);
         bool Wait();
 
-        inline bool IsLocked() {
-            return m_locked;
+        void ForceUnlock();
+        bool IsLocked();
+        int LockCount();
+
+    private:
+        friend class WaiterLock;
+
+        void Lock();
+        void Unlock();
+
+        int m_lockCount = 0;
+        bool m_forced;
+        std::mutex m_mutex;
+        std::condition_variable m_cond;
+    };
+
+    using SharedWaiter = std::shared_ptr<Waiter>;
+
+    class WaiterLock {
+    public:
+        inline WaiterLock(Waiter &waiter) : m_waiter(&waiter) {
+            waiter.Lock();
+        }
+
+        inline ~WaiterLock() {
+            Unlock();
+        }
+
+        inline void Lock() {
+            std::scoped_lock lock(m_mutex);
+            if (m_locked) return;
+            m_waiter->Lock();
+            m_locked = true;
+        }
+
+        inline void Unlock() {
+            std::scoped_lock lock(m_mutex);
+            if (!m_locked) return;
+            m_waiter->Unlock();
+            m_locked = false;
         }
 
     private:
-        bool m_success = true;
-        bool m_locked = false;
+        bool m_locked = true;
         std::mutex m_mutex;
-        std::condition_variable m_cond;
+        Waiter *m_waiter;
     };
 }
