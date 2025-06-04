@@ -133,11 +133,11 @@ do
     }
 end
 
+for k, vec in pairs(directionVectors) do
+    FormatMapPositionOutArg(vec)
+end
+
 ---Returns a vector that points towards the given direction.
----For the 4 orthogonal directions either x or y is equal to -1 or 1.
----For the 4 simple diagonal directions both x and y are equal to -1 or 1.
----For the 8 double diagonal directions (like north north west)
----either x or y is equal to -1 or 1 and the other is -0.5 or 0.5.
 ---@param direction defines.direction
 ---@return MapPosition
 function Vector.FromDirection(direction)

@@ -7,14 +7,14 @@ local Area = Math2d.Area
 local halfPi = math.pi / 2
 
 Event.OnInit(function ()
-    ---@type { entity: { pos: MapPosition.0, action: boolean }[], chunk: { pos: MapPosition.0, action: boolean }[] }
-    storage.pathfinderDataUpdates = { entity = {}, chunk = {} }
+    ---@type { entity: true[][], chunk: true[][] }
+    storage.pathfinderData = { entity = {}, chunk = {} }
 end)
 
 ---@param event EventData.on_chunk_generated
 Event.OnEvent(defines.events.on_chunk_generated, function (event)
     local surface = game.get_surface(1) --[[@as LuaSurface]]
-    local updates = storage.pathfinderDataUpdates.chunk
+    local chunkData = storage.pathfinderData.chunk
     local leftTop = event.area.left_top
     local rightBottom = event.area.right_bottom
     local leftBottom = { leftTop.x, rightBottom.y }
@@ -25,32 +25,32 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
     ---@param lastTile MapPosition
     local function Chunk(vec, firstTile, lastTile)
         local chunk = Vector.Add(event.position, vec)
-        local action = not surface.is_chunk_generated(chunk)
-        local tile, lastTileCopy
+        local collide = not surface.is_chunk_generated(chunk)
 
-        if action then
-            tile = Vector.Add(firstTile, vec)
-            lastTileCopy = Vector.Add(lastTile, vec)
-        else
-            tile = firstTile
-            lastTileCopy = lastTile
+        if not collide and vec.x ~= 0 and vec.y ~= 0 then
+            local chunk1 = Vector.Add(event.position, {vec.x, 0})
+            local chunk2 = Vector.Add(event.position, {0, vec.y})
+            collide = not (surface.is_chunk_generated(chunk1) and
+                          surface.is_chunk_generated(chunk2))
         end
+
+        local tile = firstTile
+        local lastTileCopy = lastTile
 
         local increment = Vector.Rotate(vec, halfPi)
         increment = Vector.Abs(increment)
-        for _ = 0, 32 do
-            local index
-            for i, t in pairs(updates) do
-                if Vector.Equal(t.pos, tile) then
-                    index = i
-                    break
-                end
+        -- infinite loop if vec is not orthogonal to the vector firstTile -> lastTile
+        while true do
+            local t = chunkData[tile.x]
+            if not t then
+                t = {}
+                chunkData[tile.x] = t
             end
 
-            if index then
-                updates[index].action = action
+            if collide then
+                t[tile.y] = true
             else
-                table.insert(updates, { pos = tile, action = action })
+                t[tile.y] = nil
             end
 
             if Vector.Equal(tile, lastTileCopy) then break end
@@ -59,50 +59,89 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
     end
 
     local fd = Vector.FromDirection
-    Chunk(fd(defines.direction.north), leftTop, rightTop)
-    Chunk(fd(defines.direction.south), leftBottom, rightBottom)
-    Chunk(fd(defines.direction.west), leftTop, leftBottom)
-    Chunk(fd(defines.direction.east), rightTop, rightBottom)
+    local n, s, w, e = fd(defines.direction.north), fd(defines.direction.south),
+                       fd(defines.direction.west), fd(defines.direction.east)
+    Chunk(n, Vector.Add(leftTop, e), Vector.Add(rightTop, w))
+    Chunk(s, Vector.Add(leftBottom, e), Vector.Add(rightBottom, w))
+    Chunk(w, Vector.Add(leftTop, s), Vector.Add(leftBottom, n))
+    Chunk(e, Vector.Add(rightTop, s), Vector.Add(rightBottom, n))
 
     Chunk(fd(defines.direction.northwest), leftTop, leftTop)
     Chunk(fd(defines.direction.northeast), rightTop, rightTop)
     Chunk(fd(defines.direction.southwest), leftBottom, leftBottom)
     Chunk(fd(defines.direction.southeast), rightBottom, rightBottom)
+
+    local entityData = storage.pathfinderData.entity
+    for x = leftTop.x, rightBottom.x do
+        for y = leftTop.y, rightBottom.y do
+            local t = entityData[x]
+            if not t then
+                t = {}
+                entityData[x] = t
+            end
+
+            local pos = {x, y}
+            if surface.entity_prototype_collides("character", pos, false) then
+                t[y] = true
+            else
+                t[y] = nil
+            end
+        end
+    end
+
+    if (event.position.x == 0 and event.position.y == 0) or
+       (event.position.x == -1 and event.position.y == 0) or
+       (event.position.x == 0 and event.position.y == -1) or
+       (event.position.x == -1 and event.position.y == -1) then
+
+        entityData[0][0] = nil
+    end
 end)
 
--- Event.OnInit(function ()
---     local surface = game.get_surface(1) --[[@as LuaSurface]]
---     local d = {}
-
---     for chunk in surface.get_chunks() do
---         local area = chunk.area
---         for x = area.left_top.x, area.right_bottom.x do
---             for y = area.left_top.y, area.right_bottom.y do
---                 local pos = { x = x, y = y }
---                 local count = surface.entity_prototype_collides("character", pos, false)
---                 if count > 0 then
---                     table.insert(d, pos)
---                 end
---             end
---         end
---     end
-
---     API.InvokeEvent("SetPathfinderData", d)
--- end)
-
-commands.add_command("draw", "", function (c)
+Event.OnNthTick(120, function (event)
     rendering.clear()
-    for k, t in pairs(storage.pathfinderDataUpdates.chunk) do
-        local c = { r = 1 }
-        if t.action then c = { g = 1 } end
-        rendering.draw_circle{
-            color = c,
-            radius = 0.5,
-            filled = true,
-            target = t.pos,
-            surface = 1
-        }
+    for x, t in pairs(storage.pathfinderData.chunk) do
+        for y, valid in pairs(t) do
+            if valid then
+                rendering.draw_circle{
+                    color = { g = 1 },
+                    radius = 0.45,
+                    filled = true,
+                    target = {x, y},
+                    surface = 1
+                }
+            end
+        end
     end
+
+    for x, t in pairs(storage.pathfinderData.entity) do
+        for y, valid in pairs(t) do
+            if valid then
+                rendering.draw_circle{
+                    color = { r = 1 },
+                    radius = 0.45,
+                    filled = true,
+                    target = {x, y},
+                    surface = 1
+                }
+            end
+        end
+    end
+end)
+
+---@param entity LuaEntity
+local function UpdateEntityDataBuilt(entity)
+    
+end
+
+---@param event EventData.on_built_entity
+Event.OnEvent(defines.events.on_built_entity, function (event)
+    UpdateEntityDataBuilt(event.entity)
+end)
+
+---@param event EventData.on_robot_built_entity
+Event.OnEvent(defines.events.on_robot_built_entity, function (event)
+    UpdateEntityDataBuilt(event.entity)
 end)
 
 ---@param request Request<nil>
@@ -131,6 +170,7 @@ API.AddRequestHandler("PathfinderData", function (request)
 end)
 
 local function EvaluatePath()
+    if true then return end
     local player = game.get_player(1) --[[@as LuaPlayer]]
 
     local walkingState = player.walking_state
