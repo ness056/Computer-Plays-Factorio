@@ -2,6 +2,8 @@ local Instruction = {}
 
 local API = require("__computer-plays-factorio__.api")
 local Event = require("__computer-plays-factorio__.event")
+local Math2d = require("__computer-plays-factorio__.math2d")
+local Area = Math2d.Area
 
 Event.OnInit(function ()
     ---@type Request<{ start: MapPosition.0, goal: MapPosition.0 }>[]
@@ -21,11 +23,11 @@ function Instruction.IsBusy()
     return not not (storage.rangedRequest or storage.mineRequest)
 end
 
----Same as API.AddRequestHandler but with additional logic for requethat
+---Same as API.AddRequestHandler but with additional logic for request that
 ---requires the player to be in range of some area
 ---@param requestName string | string[]
 ---@param handler RequestHandler
----@param getArea fun(request: Request<any>): Area?, number?
+---@param getArea fun(request: Request<any>): BoundingBox?, number?
 function Instruction.AddRangedRequest(requestName, handler, getArea)
     API.AddRequestHandler(requestName, function (request)
         if Instruction.IsBusy() then
@@ -43,7 +45,7 @@ function Instruction.AddRangedRequest(requestName, handler, getArea)
             return
         end
 
-        if area:SqDistanceTo(game.get_player(1).position) > math.pow(range, 2) then
+        if Area.SqDistanceTo(area, game.get_player(1).position) > math.pow(range, 2) then
             handler(request)
             storage.rangedRequest = nil
         end

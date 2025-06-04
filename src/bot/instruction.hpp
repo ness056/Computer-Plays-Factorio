@@ -7,7 +7,7 @@ namespace ComputerPlaysFactorio {
 
     class Instruction {
     public:
-        using Handler = std::function<SharedWaiter(FactorioInstance&)>;
+        using Handler = std::function<void(FactorioInstance&)>;
 
         enum Type {
             NORMAL,
@@ -17,7 +17,7 @@ namespace ComputerPlaysFactorio {
         Instruction(const Handler &handler, Type type = NORMAL) :
             m_handler(handler), m_type(type) {}
 
-        inline SharedWaiter Call(FactorioInstance &instance) const {
+        inline void Call(FactorioInstance &instance) const {
             m_handler(instance);
         }
 

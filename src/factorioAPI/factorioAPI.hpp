@@ -76,54 +76,57 @@ namespace ComputerPlaysFactorio {
         RCON_RESPONSE_VALUE = 0
     };
 
-    struct RequestDataless {
+    struct RequestBase {
         uint32_t id;
         std::string name;
 
-        SERIALIZABLE(RequestDataless, id, name)
+        SERIALIZABLE(RequestBase, id, name)
     };
 
     enum RequestError {
-        FACTORIO_EXITED = 0,
-        BUSY = 1,
-        NO_PATH_FOUND = 2,
-        EMPTY_PATH = 3,
-        ENTITY_DOESNT_EXIST = 4,
-        ITEM_DOESNT_EXIST = 5,
-        NOT_ENOUGH_ITEM = 6,
-        NOT_ENOUGH_ROOM = 7,
-        NOT_IN_RANGE = 8,
-        ITEM_CANNOT_BE_PLACED = 9
+        FACTORIO_NOT_RUNNING = 1,
+        FACTORIO_EXITED = 2,
+        BUSY = 3,
+        NO_PATH_FOUND = 4,
+        EMPTY_PATH = 5,
+        ENTITY_DOESNT_EXIST = 6,
+        ITEM_DOESNT_EXIST = 7,
+        FLUID_DOESNT_EXIST = 8,
+        RECIPE_DOESNT_EXIST = 9,
+        NOT_ENOUGH_ITEM = 10,
+        NOT_ENOUGH_ROOM = 11,
+        NOT_IN_RANGE = 12,
+        ITEM_NOT_BUILDABLE = 13,
+        NO_ENTITY_FOUND = 14,
+        NO_INVENTORY_FOUND = 15,
+        NOT_ENOUGH_INGREDIENTS = 16,
+        ENTITY_NOT_ROTATABLE = 17
     };
 
-    struct ResponseDataless {
+    struct ResponseBase {
         uint32_t id;
         bool success;
         RequestError error;
 
-        SERIALIZABLE(ResponseDataless, id, success, error)
+        SERIALIZABLE(ResponseBase, id, success, error)
     };
 
     template<class T>
-    struct Response : public ResponseDataless {
+    struct Response : public ResponseBase {
         T data;
 
         SERIALIZABLE(Response<T>, id, success, error, data)
     };
 
-    template<class T>
-    using ResponseCallback = std::function<void(const Response<T>&)>;
-    using ResponseDatalessCallback = std::function<void(const ResponseDataless&)>;
-
-    struct EventDataless {
+    struct EventBase {
         uint32_t id;
         std::string name;
 
-        SERIALIZABLE(EventDataless, id, name);
+        SERIALIZABLE(EventBase, id, name);
     };
 
     template<class T>
-    struct Event : public EventDataless {
+    struct Event : public EventBase {
         T data;
 
         SERIALIZABLE(Event, id, name, data);
@@ -173,23 +176,20 @@ namespace ComputerPlaysFactorio {
 
         bool SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND) const;
 
-        bool SendRequest(const std::string &name) const;
-        template<class T>
-        bool SendRequestData(const std::string &name, const T &data) const;
-        template<class R>
-        bool SendRequestRes(const std::string &name, ResponseCallback<R> callback);
         template<class T, class R>
-        bool SendRequestDataRes(const std::string &name, const T &data, ResponseCallback<R> callback);
-        bool SendRequestResDL(const std::string &name, ResponseDatalessCallback callback);
+        std::future<Response<R>> Request(const std::string &name, const T &data);
+        template<class R>
+        std::future<Response<R>> Request(const std::string &name);
         template<class T>
-        bool SendRequestDataResDL(const std::string &name, const T &data, ResponseDatalessCallback callback);
+        std::future<ResponseBase> RequestNoRes(const std::string &name, const T &data);
+        std::future<ResponseBase> RequestNoRes(const std::string &name);
 
-        inline bool Broadcast(const std::string &msg) const { return SendRequestData("Broadcast", msg); }
-        inline bool SetGameSpeed(float ticks) const { return SendRequestData("GameSpeed", ticks); }
-        inline bool PauseToggle() const { return SendRequest("PauseToggle"); }
-        inline bool Save(const std::string &name) const { return SendRequestData("Save", name); }
-        bool GetPlayerPosition(MapPosition &out);
-        inline PathfinderData GetPathFinderData() { return m_pathfinderData; }
+        inline auto Broadcast(const std::string &msg) { return RequestNoRes("Broadcast", msg); }
+        inline auto SetGameSpeed(float ticks) { return RequestNoRes("GameSpeed", ticks); }
+        inline auto PauseToggle() { return RequestNoRes("PauseToggle"); }
+        inline auto Save(const std::string &name) { return RequestNoRes("Save", name); }
+        inline auto GetPlayerPosition() { Request<MapPosition>("GetPlayerPosition"); }
+        inline const PathfinderData &GetPathFinderData() { return m_pathfinderData; }
 
         const Type instanceType;
 
@@ -223,18 +223,18 @@ namespace ComputerPlaysFactorio {
 
         std::map<uint32_t, std::function<void(const QJsonObject &data)>> m_pendingRequests;
 
-        bool SendRequestPrivate(const std::string &name, uint32_t *id = nullptr) const;
+        bool RequestPrivate(const std::string &name, uint32_t *id = nullptr) const;
         template<class T>
-        bool SendRequestPrivate(const std::string &name, const T &data, uint32_t *id = nullptr) const;
+        bool RequestPrivate(const std::string &name, const T &data, uint32_t *id = nullptr) const;
         template<class R>
-        void AddResponse(uint32_t id, ResponseCallback<R> callback);
-        void AddResponseDataless(uint32_t id, ResponseDatalessCallback callback);
+        std::future<Response<R>> AddResponse(uint32_t id);
+        std::future<ResponseBase> AddResponseBase(uint32_t id);
 
         std::map<std::string, std::function<void(const QJsonObject &data)>> m_eventHandlers;
 
         template<typename T>
         using EventCallback = std::function<void(const Event<T>&)>;
-        using EventCallbackDL = std::function<void(const EventDataless&)>;
+        using EventCallbackDL = std::function<void(const EventBase&)>;
 
         template<typename T>
         void RegisterEvent(const std::string &name, EventCallback<T>);
@@ -260,8 +260,8 @@ namespace ComputerPlaysFactorio {
     };
 
     template <class T>
-    bool FactorioInstance::SendRequestPrivate(const std::string &name, const T &data, uint32_t *id) const {
-        RequestDataless r;
+    bool FactorioInstance::RequestPrivate(const std::string &name, const T &data, uint32_t *id) const {
+        RequestBase r;
         r.id = s_id++;
         r.name = name;
         if (id) *id = r.id;
@@ -271,47 +271,64 @@ namespace ComputerPlaysFactorio {
     }
 
     template<class R>
-    void FactorioInstance::AddResponse(uint32_t id, ResponseCallback<R> callback) {
-        assert(callback);
-        m_pendingRequests[id] = [=](const QJsonObject &json) {
+    std::future<Response<R>> FactorioInstance::AddResponse(uint32_t id) {
+        auto promise = std::make_shared<std::promise<Response<R>>>();
+        m_pendingRequests[id] = [promise](const QJsonObject &json) {
             Response<R> data;
             FromJson(json, data);
-            ThreadPool::QueueJob([data, callback] {
-                callback(data);
-            });
+            promise->set_value(data);
         };
-    }
-
-    template<class T>
-    bool FactorioInstance::SendRequestData(const std::string &name, const T &data) const {
-        return SendRequestPrivate(name, data);
-    }
-
-    template<class R>
-    bool FactorioInstance::SendRequestRes(const std::string &name, ResponseCallback<R> callback) {
-        uint32_t id;
-        if (!SendRequestPrivate(name, &id)) return false;
-
-        AddResponse(id, callback);
-        return true;
+        return promise->get_future();
     }
 
     template<class T, class R>
-    bool FactorioInstance::SendRequestDataRes(const std::string &name, const T &data, ResponseCallback<R> callback) {
+    std::future<Response<R>> FactorioInstance::Request(const std::string &name, const T &data) {
         uint32_t id;
-        if (!SendRequestPrivate(name, data, &id)) return false;
+        if (!RequestPrivate(name, data, &id)) {
+            Response<R> res;
+            res.id = id;
+            res.success = false;
+            res.error = FACTORIO_NOT_RUNNING;
 
-        AddResponse(id, callback);
-        return true;
+            std::promise<Response<R>> promise;
+            promise.set_value(res);
+            return promise.get_future();
+        }
+
+        return AddResponse<R>(id);
+    }
+
+    template<class R>
+    std::future<Response<R>> FactorioInstance::Request(const std::string &name) {
+        uint32_t id;
+        if (!RequestPrivate(name, &id)) {
+            Response<R> res;
+            res.id = id;
+            res.success = false;
+            res.error = FACTORIO_NOT_RUNNING;
+
+            std::promise<Response<R>> promise;
+            promise.set_value(res);
+            return promise.get_future();
+        }
+
+        return AddResponse<R>(id);
     }
 
     template<class T>
-    bool FactorioInstance::SendRequestDataResDL(const std::string &name, const T &data, ResponseDatalessCallback callback) {
+    std::future<ResponseBase> FactorioInstance::RequestNoRes(const std::string &name, const T &data) {
         uint32_t id;
-        if (!SendRequestPrivate(name, data, &id)) return false;
+        if (!RequestPrivate(name, data, &id)) {
+            std::promise<ResponseBase> promise;
+            promise.set_value(ResponseBase{
+                .id = id,
+                .success = false,
+                .error = FACTORIO_NOT_RUNNING
+            });
+            return promise.get_future();
+        }
 
-        AddResponseDataless(id, callback);
-        return true;
+        return AddResponseBase(id);
     }
 
     template<typename T>

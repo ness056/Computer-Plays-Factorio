@@ -45,7 +45,7 @@
  *  
  *      SERIALIZABLE_BEGIN
  *          PROPERTIES(Test<T>, a, b, c, d, e, f, g),    // !!!! Do NOT forget the comma at the end !!!!
- *          CUSTOM_NAME_PROPERTIES(Test<T>, "k", somethingWeDontWant_k, "l", somethingWeDontWant_l)
+ *          PROPERTIES_CUSTOM_NAMES(Test<T>, "k", somethingWeDontWant_k, "l", somethingWeDontWant_l)
  *      SERIALIZABLE_END
  * 
  *      // Additionally, in case all the members we want to include can be named automatically,
@@ -93,25 +93,60 @@ private:\
 #define EXPAND2(...) EXPAND1(EXPAND1(EXPAND1(EXPAND1(__VA_ARGS__))))
 #define EXPAND1(...) __VA_ARGS__
 
-#define PROPERTIES(className, ...) __VA_OPT__(EXPAND(PROPERTIES_HELPER(className, __VA_ARGS__)))
-#define PROPERTIES_HELPER(className, v, ...) \
-    SerializerProperty(#v, &className::v) __VA_OPT__(COMMA PROPERTIES_AGAIN PARENS (className, __VA_ARGS__))
+#define PROPERTIES(type, ...) __VA_OPT__(EXPAND(PROPERTIES_HELPER(type, __VA_ARGS__)))
+#define PROPERTIES_HELPER(type, v, ...) \
+    SerializerProperty(#v, &type::v) __VA_OPT__(COMMA PROPERTIES_AGAIN PARENS (type, __VA_ARGS__))
 #define PROPERTIES_AGAIN() PROPERTIES_HELPER
 
-#define CUSTOM_NAME_PROPERTIES(className, ...) __VA_OPT__(EXPAND(CUSTOM_NAME_PROPERTIES_HELPER(className, __VA_ARGS__)))
-#define CUSTOM_NAME_PROPERTIES_HELPER(className, n, v, ...) \
-    SerializerProperty(n, &className::v) __VA_OPT__(COMMA CUSTOM_NAME_PROPERTIES_AGAIN PARENS (className, __VA_ARGS__))
-#define CUSTOM_NAME_PROPERTIES_AGAIN() CUSTOM_NAME_PROPERTIES_HELPER
+#define PROPERTIES_CUSTOM_NAMES(type, ...) __VA_OPT__(EXPAND(PROPERTIES_CUSTOM_NAMES_HELPER(type, __VA_ARGS__)))
+#define PROPERTIES_CUSTOM_NAMES_HELPER(type, n, v, ...) \
+    SerializerProperty(n, &type::v) __VA_OPT__(COMMA PROPERTIES_CUSTOM_NAMES_AGAIN PARENS (type, __VA_ARGS__))
+#define PROPERTIES_CUSTOM_NAMES_AGAIN() PROPERTIES_CUSTOM_NAMES_HELPER
 
-#define SERIALIZABLE(className, ...) \
+#define SERIALIZABLE(type, ...) \
     SERIALIZABLE_BEGIN \
-    PROPERTIES(className, __VA_ARGS__) \
+    PROPERTIES(type, __VA_ARGS__) \
     SERIALIZABLE_END
 
-#define SERIALIZABLE_CUSTOM_NAMES(className, ...) \
+#define SERIALIZABLE_CUSTOM_NAMES(type, ...) \
     SERIALIZABLE_BEGIN \
-    CUSTOM_NAME_PROPERTIES(className, __VA_ARGS__) \
+    PROPERTIES_CUSTOM_NAMES(type, __VA_ARGS__) \
     SERIALIZABLE_END
+
+template<typename T, typename = int>
+struct HasSerializerProperties : std::false_type {};
+
+template<typename T>
+struct HasSerializerProperties<T, decltype((void)T::s_properties, 0)> : std::true_type {};
+
+template<typename>
+struct IsVector : std::false_type {};
+
+template<typename T, typename A>
+struct IsVector<std::vector<T,A>> : std::true_type {};
+
+template<typename>
+struct IsStringMap : std::false_type {};
+
+template<typename T, typename A>
+struct IsStringMap<std::map<std::string, T, A>> : std::true_type {};
+
+#define SERIALIZABLE_ASSERT(type) static_assert( \
+    std::is_same_v<type, bool> || \
+    std::is_integral_v<type> || std::is_enum_v<type> || \
+    std::is_floating_point_v<type> || \
+    std::is_same_v<type, std::string> || \
+    IsVector<type>::value || \
+    IsStringMap<type>::value || \
+    ( \
+        std::is_class_v<type> && \
+        HasSerializerProperties<type>::value \
+    ), \
+    "The given type is not serializable. See the list of serializable types in" \
+    " utils/serializer.hpp." \
+    " (If the compiler gives you a stack trace, the type's name should be in it." \
+    " If it doesn't give you that, well good luck!)" \
+);
 
     inline QJsonValue ToJson(const bool &v) {
         return QJsonValue(v);
@@ -201,6 +236,7 @@ private:\
 
     template<class T>
     QJsonObject ToJson(const T &v) {
+        SERIALIZABLE_ASSERT(T);
         constexpr auto nbProperties = std::tuple_size<decltype(T::s_properties)>::value;
         QJsonObject r;
 
@@ -215,6 +251,7 @@ private:\
 
     template<class T>
     void FromJson(const QJsonValue &json, T &out) {
+        SERIALIZABLE_ASSERT(T);
         constexpr auto nbProperties = std::tuple_size<decltype(T::s_properties)>::value;
 
         ForProperties(std::make_index_sequence<nbProperties>{}, [&](auto j) {

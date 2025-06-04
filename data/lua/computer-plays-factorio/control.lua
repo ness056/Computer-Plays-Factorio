@@ -21,31 +21,39 @@ commands.add_command("profile_command", "Same as /c but measures the time to exe
         printFun = game.player.print
     end
 
-    local fun, err = load(c.parameter, nil, "t")
+    local fun, compileError = load(c.parameter, nil, "t")
     if fun then
         local profiler = helpers.create_profiler()
-        fun()
+        local success, callError = pcall(fun)
         profiler.stop()
-        printFun({"Measured time: ", profiler})
+        if success then
+            printFun({"", "Measured time: ", profiler})
+        else
+            printFun({"", "Run time error: ", callError})
+        end
     else
-        printFun(err)
+        printFun({"", "Compiling error: ", compileError})
     end
 end)
 
 ---@param request Request<string>
 API.AddRequestHandler("Broadcast", function (request)
     game.print(request.data)
+    API.Success(request)
 end)
 
 ---@param request Request<float>
 API.AddRequestHandler("GameSpeed", function (request)
     game.speed = request.data
+    API.Success(request)
 end)
 
 API.AddRequestHandler("PauseToggle", function (request)
     game.tick_paused = not game.tick_paused
+    API.Success(request)
 end)
 
 API.AddRequestHandler("Save", function (request)
     game.auto_save(request.data)
+    API.Success(request)
 end)

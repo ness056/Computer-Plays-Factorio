@@ -13,7 +13,7 @@ local Area = Math2d.Area
 ---@field force boolean
 
 ---@param request Request<PutTakeRequestData>
----@return Area?, number?
+---@return BoundingBox?, number?
 local function getAreaReachEntity(request)
     if not prototypes.entity[request.data.entity] then
         API.Failed(request, RequestError.ENTITY_DOESNT_EXIST)

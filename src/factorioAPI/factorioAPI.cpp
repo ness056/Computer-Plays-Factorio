@@ -95,7 +95,7 @@ namespace ComputerPlaysFactorio {
 
         connect(&m_process, &QProcess::finished, [this](int exitCode, QProcess::ExitStatus status) {
             for (auto &[id, request] : m_pendingRequests) {
-                auto res = ResponseDataless{.id = id, .success = false, .error = FACTORIO_EXITED};
+                auto res = ResponseBase{.id = id, .success = false, .error = FACTORIO_EXITED};
                 auto json = ToJson(res);
                 request(json);
             }
@@ -121,13 +121,6 @@ namespace ComputerPlaysFactorio {
                 for (const auto &pos : e.data.remove) {
                     if (m_pathfinderData.contains(pos)) m_pathfinderData.erase(pos);
                 }
-            }
-        );
-
-        RegisterEvent<std::vector<MapPosition>>("SetPathfinderData",
-            [this](const Event<std::vector<MapPosition>> &e) {
-                m_pathfinderData.clear();
-                m_pathfinderData.insert(e.data.begin(), e.data.end());
             }
         );
     }
@@ -253,7 +246,7 @@ namespace ComputerPlaysFactorio {
                     g_error << "Response is not a json object: " << std::string(pos, size) << std::endl;
                 }
 
-                ResponseDataless rDataless;
+                ResponseBase rDataless;
                 FromJson(data.object(), rDataless);
                 g_info << QByteArray(pos, size).toStdString() << std::endl;
                 if (m_pendingRequests.count(rDataless.id)) {
@@ -277,7 +270,7 @@ namespace ComputerPlaysFactorio {
                     g_error << "Event is not a json object: " << std::string(pos, size) << std::endl;
                 }
 
-                EventDataless rDataless;
+                EventBase rDataless;
                 FromJson(data.object(), rDataless);
                 g_info << QByteArray(pos, size).toStdString() << std::endl;
                 if (m_eventHandlers.contains(rDataless.name)) {
@@ -296,7 +289,7 @@ namespace ComputerPlaysFactorio {
     void FactorioInstance::RegisterEvent(const std::string &name, EventCallbackDL callback) {
         assert(callback);
         m_eventHandlers[name] = [=](const QJsonObject &json) {
-            EventDataless data;
+            EventBase data;
             FromJson(json, data);
             ThreadPool::QueueJob([data, callback] {
                 callback(data);
@@ -392,8 +385,8 @@ namespace ComputerPlaysFactorio {
         return true;
     }
 
-    bool FactorioInstance::SendRequestPrivate(const std::string &name, uint32_t *id) const {
-        RequestDataless r;
+    bool FactorioInstance::RequestPrivate(const std::string &name, uint32_t *id) const {
+        RequestBase r;
         r.id = s_id++;
         r.name = name;
         if (id) *id = r.id;
@@ -401,40 +394,28 @@ namespace ComputerPlaysFactorio {
         return SendRCON("/request " + QJsonDocument(json).toJson(QJsonDocument::Compact).toStdString());
     }
 
-    void FactorioInstance::AddResponseDataless(uint32_t id, ResponseDatalessCallback callback) {
-        assert(callback);
-        m_pendingRequests[id] = [=](const QJsonObject &json) {
-            ResponseDataless data;
+    std::future<ResponseBase> FactorioInstance::AddResponseBase(uint32_t id) {
+        auto promise = std::make_shared<std::promise<ResponseBase>>();
+        m_pendingRequests[id] = [promise](const QJsonObject &json) {
+            ResponseBase data;
             FromJson(json, data);
-            ThreadPool::QueueJob([data, callback] {
-                callback(data);
-            });
+            promise->set_value(data);
         };
+        return promise->get_future();
     }
 
-    bool FactorioInstance::SendRequest(const std::string &name) const {
-        return SendRequestPrivate(name);
-    }
-
-    bool FactorioInstance::SendRequestResDL(const std::string &name, ResponseDatalessCallback callback) {
+    std::future<ResponseBase> FactorioInstance::RequestNoRes(const std::string &name) {
         uint32_t id;
-        if (!SendRequestPrivate(name, &id)) return false;
+        if (!RequestPrivate(name, &id)) {
+            std::promise<ResponseBase> promise;
+            promise.set_value(ResponseBase{
+                .id = id,
+                .success = false,
+                .error = FACTORIO_NOT_RUNNING
+            });
+            return promise.get_future();
+        }
 
-        AddResponseDataless(id, callback);
-        return true;
-    }
-
-    bool FactorioInstance::GetPlayerPosition(MapPosition &out) {
-        Waiter waiter;
-        WaiterLock lock(waiter);
-
-        bool success = SendRequestRes<MapPosition>("GetPlayerPosition",
-            [&lock, &out](const Response<MapPosition> &res) {
-                out = res.data;
-                lock.Unlock();
-            }
-        );
-        if (success) waiter.Wait();
-        return success;
+        return AddResponseBase(id);
     }
 }

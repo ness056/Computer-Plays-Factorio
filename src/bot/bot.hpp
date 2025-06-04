@@ -59,7 +59,6 @@ namespace ComputerPlaysFactorio {
         EventManager m_eventManager;
 
         std::deque<std::unique_ptr<Task>> m_tasks;
-        SharedWaiter m_instructionWaiter;
 
         FactorioInstance m_instance;
     };

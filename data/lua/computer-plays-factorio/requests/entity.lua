@@ -5,7 +5,7 @@ local Math2d = require("__computer-plays-factorio__.math2d")
 local Area = Math2d.Area
 
 ---@param request Request<{ position: MapPosition.0, item: string, direction: defines.direction }>
----@return Area?, number?
+---@return BoundingBox?, number?
 local function getAreaBuild(request)
     if not prototypes.item[request.data.item] then
         API.Failed(request, RequestError.ITEM_DOESNT_EXIST)
@@ -45,7 +45,7 @@ Instruction.AddRangedRequest("Build", function (request)
 end, getAreaBuild)
 
 ---@param request Request<MapPosition.0>
----@return Area?, number?
+---@return BoundingBox?, number?
 local function getAreaMine(request)
     local player = game.get_player(1) --[[@as LuaPlayer]]
     player.update_selected_entity(request.data)
@@ -54,7 +54,7 @@ local function getAreaMine(request)
         return
     end
 
-    return Area.new(player.selected.bounding_box), player.reach_distance
+    return player.selected.bounding_box, player.reach_distance
 end
 
 local function MineUpdate()
@@ -93,7 +93,7 @@ Event.OnEvent(defines.events.on_player_mined_entity, function (event)
 end)
 
 ---@param request Request<{ position: MapPosition.0, entity: string }>
----@return Area?, number?
+---@return BoundingBox?, number?
 local function getAreaReachEntity(request)
     if not prototypes.entity[request.data.entity] then
         API.Failed(request, RequestError.ENTITY_DOESNT_EXIST)

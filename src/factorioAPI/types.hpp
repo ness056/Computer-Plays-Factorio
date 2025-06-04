@@ -121,3 +121,10 @@ namespace ComputerPlaysFactorio {
         SERIALIZABLE(EntitySearchFilters, area, position, radius, name, type);
     };
 }
+
+template<>
+struct std::hash<ComputerPlaysFactorio::MapPosition> {
+    size_t operator()(const ComputerPlaysFactorio::MapPosition &position) const {
+        return std::hash<double>()(position.x) ^ (std::hash<double>()(position.y) << 1);
+    }
+};

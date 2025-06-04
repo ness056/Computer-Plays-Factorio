@@ -4,7 +4,7 @@ namespace ComputerPlaysFactorio {
 
     void Bot::Test() {
         MapPosition pos(0, 0);
-        m_tasks.push_back(std::make_unique<BuildBurnerCity>(&m_instance, pos));
+        m_tasks.push_back(std::make_unique<BuildBurnerCity>(&m_instance, &m_eventManager));
     }
 
     Bot::Bot() : m_instance(FactorioInstance::GRAPHICAL) {
@@ -36,7 +36,6 @@ namespace ComputerPlaysFactorio {
     void Bot::ClearQueue() {
         std::unique_lock lock(m_loopMutex);
         m_tasks.clear();
-        if (m_instructionWaiter) m_instructionWaiter->ForceUnlock();
     }
 
     bool Bot::Join(int ms) {
@@ -56,20 +55,15 @@ namespace ComputerPlaysFactorio {
             }
             if (m_exit) break;
 
+            Instruction *instruction;
             {
                 std::scoped_lock lock(m_loopMutex);
 
                 if (m_tasks.empty()) continue;
-                auto instruction = m_tasks.front()->GetInstruction();
+                instruction = m_tasks.front()->GetInstruction();
                 if (!instruction) continue;
-
-                m_instructionWaiter = instruction->Call(m_instance);
-                if (m_instructionWaiter == nullptr) {
-                    g_error << "TODO line: " << __LINE__ << std::endl;
-                    exit(1);
-                }
             }
-            if (!m_exit) m_instructionWaiter->Wait();
+            instruction->Call(m_instance);
         }
     }
 }

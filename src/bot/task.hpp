@@ -8,15 +8,7 @@ namespace ComputerPlaysFactorio {
     public:
         Instruction *GetInstruction();
         void PopInstruction();
-        size_t InstructionCount() const;
-
-        const std::deque<Instruction> &GetAllInstruction() const {
-            return m_instructions;
-        }
-
-        inline size_t InstructionCount() const {
-            m_instructions.size();
-        }
+        size_t InstructionCount();
 
     protected:
         Task(FactorioInstance *instance, EventManager *eventManager) {
@@ -28,8 +20,7 @@ namespace ComputerPlaysFactorio {
         
         void QueueInstruction(const Instruction::Handler&);
 
-        void QueueMineEntities(MapPosition &playerPos,
-            const std::vector<Entity> &entities);
+        void QueueMineEntities(const std::vector<Entity> &entities);
 
         FactorioInstance *m_instance;
         EventManager *m_eventManager;
@@ -43,18 +34,11 @@ namespace ComputerPlaysFactorio {
         BuildBurnerCity(FactorioInstance *instance, EventManager *eventManager)
             : Task(instance, eventManager) {
 
-            std::vector<Entity> entities;
-            Waiter w;
-            w.Lock();
-            m_instance->SendRequestDataRes<EntitySearchFilters, std::vector<Entity>>(
-                "FindEntitiesFiltered",
-                EntitySearchFilters{.name = {"big-rock"}},
-                [&entities, &w](const Response<std::vector<Entity>> &res) {
-                    entities = res.data;
-                    w.Unlock();
-                }
-            );
-            QueueMineEntities(entities);
+            auto entitiesFuture = m_instance->Request<EntitySearchFilters, std::vector<Entity>>(
+                "FindEntitiesFiltered", EntitySearchFilters{.name = {"big-rock"}});
+            entitiesFuture.wait();
+            auto entities = entitiesFuture.get();
+            QueueMineEntities(entities.data);
         }
     };
 }
