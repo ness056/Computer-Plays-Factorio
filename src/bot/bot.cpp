@@ -13,7 +13,7 @@ namespace ComputerPlaysFactorio {
         });
 
         m_eventManager.connect(&m_eventManager, &EventManager::NewInstruction, [this] {
-
+            m_loopCond.notify_all();
         });
     }
    
@@ -38,9 +38,9 @@ namespace ComputerPlaysFactorio {
         m_tasks.clear();
     }
 
-    bool Bot::Join(int ms) {
+    bool Bot::Join() {
         if (m_loopThread.joinable()) m_loopThread.join();
-        return m_instance.Join(ms);
+        return m_instance.Join();
     }
 
     bool Bot::Running() {

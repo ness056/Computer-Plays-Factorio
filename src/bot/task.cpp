@@ -31,7 +31,7 @@ namespace ComputerPlaysFactorio {
             points.emplace_back(entity.position, 5);
         }
 
-        PathfinderData pathfinderData = m_instance->GetPathFinderData();
+        PathfinderData pathfinderData = m_instance->GetPathfinderData();
         auto paths = FindStepPath(pathfinderData, {0, 0}, points);
 
         QueueInstruction([paths](FactorioInstance &instance) {

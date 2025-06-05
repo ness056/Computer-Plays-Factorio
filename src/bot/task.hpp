@@ -35,7 +35,7 @@ namespace ComputerPlaysFactorio {
             : Task(instance, eventManager) {
 
             auto entitiesFuture = m_instance->Request<EntitySearchFilters, std::vector<Entity>>(
-                "FindEntitiesFiltered", EntitySearchFilters{.name = {"big-rock"}});
+                "FindEntitiesFiltered", EntitySearchFilters{.area = {{-100, -100}, {100, 100}}, .name = {"big-rock"}});
             entitiesFuture.wait();
             auto entities = entitiesFuture.get();
             QueueMineEntities(entities.data);

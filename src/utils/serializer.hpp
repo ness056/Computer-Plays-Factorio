@@ -13,12 +13,14 @@
 /**
  * Used to serialize data sent between C++ and Factorio.
  * 
- * Supports booleans, all numeric values, enums, strings, C arrays, vectors and maps with string as keys.
- * Custom classes can also be serialize if they have a public member called
- *  properties that specifies what members are to be included in the serialization.
- * Does not support pointers.
+ * Supports booleans, all numeric values, enums, strings, vectors and
+ *  maps with string as keys.
+ * Custom classes can also be serialized if they specify which members
+ *  should be serialized (see example below).
  * 
  * Example:
+ * 
+ *  #include "utils/serializer.hpp"
  * 
  *  using namespace ComputerPlaysFactorio;
  *
@@ -45,12 +47,16 @@
  *  
  *      SERIALIZABLE_BEGIN
  *          PROPERTIES(Test<T>, a, b, c, d, e, f, g),    // !!!! Do NOT forget the comma at the end !!!!
- *          PROPERTIES_CUSTOM_NAMES(Test<T>, "k", somethingWeDontWant_k, "l", somethingWeDontWant_l)
+ *          PROPERTIES_CUSTOM_NAMES(Test<T>, "k", m_k, "l", m_l)
  *      SERIALIZABLE_END
  * 
- *      // Additionally, in case all the members we want to include can be named automatically,
- *      // we can use the following macro instead of the 4 lines above:
- *      SERIALIZABLE(a, b, c, d, e, f, g)
+ *      // Additionally, in case all the included members can be named automatically,
+ *      // you can use the following macro instead of the 4 lines above:
+ *      SERIALIZABLE(Test<T>, a, b, c, d, e, f, g)
+ * 
+ *      // Likewise, in case all you want to give a custom name to all the included members,
+ *      // you can use the following macro:
+ *      SERIALIZABLE_CUSTOM_NAMES(Test<T>, "k", m_k, "l", m_l)
  *  };
  * 
  *  int main() {

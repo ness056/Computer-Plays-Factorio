@@ -29,7 +29,7 @@ namespace ComputerPlaysFactorio {
     void MainWindow::CreateCentralWidget() {
         QPushButton *buttonTest = new QPushButton("Test");
         connect(buttonTest, &QPushButton::clicked, [this]() {
-            m_bot.Test();
+            ThreadPool::QueueJob([this]{ m_bot.Test(); });
         });
 
         m_commandLineTab = new QWidget();

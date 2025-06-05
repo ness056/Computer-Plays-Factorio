@@ -54,9 +54,9 @@
  * - To send data from C++ to Factorio the rcon is used. Factorio's stdin should not be used
  *   since it is disabled for graphical instances.
  *
- * - To send data from Factorio to C++, Factorio's stdout is used. The rcon responses could be
- *   used in some situations but Factorio only allows to respond to a rcon request in the same
- *   game tick as it was received, which is really impractical.
+ * - To send data from Factorio to C++, Factorio's write_file function is used.
+ *   The rcon responses could be used in some situations but Factorio only allows to respond
+ *   to a rcon request in the same game tick as it was received, which is really impractical.
  * 
  * - All data sent between C++ and Factorio is serialized in JSON using serializer.hpp
  * 
@@ -64,7 +64,7 @@
  *   respond with "response[size] Response<DataType>". The id fields in Request and Response should be the
  *   same. [size] being the size in byte of the serialized data.
  * 
- * - Factorio can send events to C++ by sending "event[size] Event<DataType>". C++ cannot respond to events.
+ * - Factorio can send events to C++ by sending "event[size] Event<DataType>".
  */
 
 namespace ComputerPlaysFactorio {
@@ -84,6 +84,7 @@ namespace ComputerPlaysFactorio {
     };
 
     enum RequestError {
+        REQUEST_NO_ERROR = 0,
         FACTORIO_NOT_RUNNING = 1,
         FACTORIO_EXITED = 2,
         BUSY = 3,
@@ -141,8 +142,6 @@ namespace ComputerPlaysFactorio {
             HEADLESS
         };
 
-        // Must be called before constructing any FactorioInstance
-        static void InitStatic();
         static inline void SetFactorioPath(const std::string &path) {
             s_factorioPath = path;
         }
@@ -170,8 +169,9 @@ namespace ComputerPlaysFactorio {
         }
         bool Start(uint32_t seed, std::string *message = nullptr);
         void Stop();
-        inline bool Join(int ms = -1) {
-            return m_process.waitForFinished(ms);
+        inline bool Join() {
+            if (m_outputListener.joinable()) m_outputListener.join();
+            return m_process.waitForFinished(-1);
         }
 
         bool SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND) const;
@@ -188,12 +188,24 @@ namespace ComputerPlaysFactorio {
         inline auto SetGameSpeed(float ticks) { return RequestNoRes("GameSpeed", ticks); }
         inline auto PauseToggle() { return RequestNoRes("PauseToggle"); }
         inline auto Save(const std::string &name) { return RequestNoRes("Save", name); }
-        inline auto GetPlayerPosition() { Request<MapPosition>("GetPlayerPosition"); }
-        inline const PathfinderData &GetPathFinderData() { return m_pathfinderData; }
+        inline auto PlayerPosition() { Request<MapPosition>("PlayerPosition"); }
+
+        struct LuaPathfinderData {
+            struct SubData {
+                MapPosition p;
+                bool a;
+
+                SERIALIZABLE(SubData, p, a);
+            };
+
+            std::vector<SubData> entity;
+            std::vector<SubData> chunk;
+
+            SERIALIZABLE(LuaPathfinderData, entity, chunk);
+        };
+        const PathfinderData &GetPathfinderData(RequestError* = nullptr);
 
         const Type instanceType;
-
-        bool printStdout = false;
 
     signals:
         void Started(FactorioInstance&);
@@ -201,10 +213,8 @@ namespace ComputerPlaysFactorio {
         void Closed(FactorioInstance&);     // Emitted after RCON connection was closed
         void Terminated(FactorioInstance&, int exitCode, QProcess::ExitStatus);
 
-    private slots:
-        void StdoutListener();
-
     private:
+        static void InitStatic();
         static bool s_initStatic;
 
         static inline std::atomic<uint32_t> s_id = 0;
@@ -215,10 +225,14 @@ namespace ComputerPlaysFactorio {
 
         QProcess m_process;
         std::mutex m_mutex;
-        std::mutex m_stdoutListenerMutex;
+        
+        QJsonObject ReadJson(std::ifstream&, int count, bool &success);
+        void OutputListener();
+        std::thread m_outputListener;
 
         inline std::filesystem::path GetInstanceTempPath() { return GetTempDir() / ("data" + std::to_string(m_id)); }
         inline std::filesystem::path GetConfigPath() { return GetInstanceTempPath() / "config.ini"; }
+        inline std::filesystem::path GetOutputPath() { return GetInstanceTempPath() / "script-output/output.txt"; }
         void EditConfig(const std::string &category, const std::string &name, const std::string &value);
 
         std::map<uint32_t, std::function<void(const QJsonObject &data)>> m_pendingRequests;
@@ -240,16 +254,7 @@ namespace ComputerPlaysFactorio {
         void RegisterEvent(const std::string &name, EventCallback<T>);
         void RegisterEvent(const std::string &name, EventCallbackDL);
 
-        struct UpdatePathfinderData {
-            std::vector<MapPosition> add;
-            std::vector<MapPosition> remove;
-
-            SERIALIZABLE(UpdatePathfinderData, add, remove);
-        };
-
-        PathfinderData m_pathfinderData;
-        void UpdatePathfinderDataHandler(const Event<UpdatePathfinderData>&);
-
+        void FindAvailablePort();
         void StartRCON();
         void CloseRCON();
         bool ReadPacket(int32_t &id, int32_t &type, char body[4096]) const;
@@ -257,6 +262,9 @@ namespace ComputerPlaysFactorio {
         uint16_t m_rconPort;
         bool m_rconConnected = false;
         SOCKET m_rconSocket = INVALID_SOCKET;
+
+        PathfinderData m_pathfinderData;
+        std::mutex m_pullPathfinderDataMutex;
     };
 
     template <class T>

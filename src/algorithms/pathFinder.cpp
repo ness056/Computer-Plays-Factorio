@@ -17,7 +17,7 @@ namespace ComputerPlaysFactorio {
     using NodeSet = std::vector<Node*>;
 
     static bool DetectCollision(const PathfinderData &data, MapPosition pos) {
-        if (data.contains(pos)) return true;
+        if (data.entity.contains(pos) || data.chunk.contains(pos)) return true;
         return false;
     }
 

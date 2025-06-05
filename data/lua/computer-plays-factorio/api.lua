@@ -56,6 +56,14 @@ RequestError = {
 
 ---@alias Request<T> { id: int, name: string, data: T }
 
+---@param prefix string
+---@param data string
+local function SendData(prefix, data)
+    local player_index = 1
+    if game.is_multiplayer() then player_index = 0 end
+    helpers.write_file("output.txt", prefix .. data:len() .. " " .. data, true, player_index)
+end
+
 ---@generic T
 ---@param request Request<T>
 ---@param data any
@@ -65,8 +73,8 @@ function API.Success(request, data)
         success = true,
         data = data
     })
-    print("response" .. d:len() .. " " .. d)
-    log(d)
+
+    SendData("response", d)
 end
 
 ---@generic T
@@ -78,8 +86,8 @@ function API.Failed(request, error)
         success = false,
         error = error
     })
-    print("response" .. d:len() .. " " .. d)
-    log(d)
+
+    SendData("response", d)
 end
 
 commands.add_command("request", nil, function (data)
@@ -109,7 +117,8 @@ function API.InvokeEvent(name, data)
         id = API.GetId(),
         data = data
     })
-    print("event" .. d:len() .. " " .. d)
+
+    SendData("event", d)
 end
 
 Event.OnInit(function ()

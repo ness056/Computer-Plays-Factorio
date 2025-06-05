@@ -39,7 +39,7 @@ namespace ComputerPlaysFactorio {
 
         bool Start(std::string *message = nullptr);
         void Stop();
-        bool Join(int ms = -1);
+        bool Join();
         bool Running();
 
         inline const FactorioInstance &GetFactorioInstance() {

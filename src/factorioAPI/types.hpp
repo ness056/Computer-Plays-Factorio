@@ -113,12 +113,10 @@ namespace ComputerPlaysFactorio {
 
     struct EntitySearchFilters {
         Area area;
-        MapPosition position;
-        double radius;
         std::vector<std::string> name;
         std::vector<std::string> type;
 
-        SERIALIZABLE(EntitySearchFilters, area, position, radius, name, type);
+        SERIALIZABLE(EntitySearchFilters, area, name, type);
     };
 }
 

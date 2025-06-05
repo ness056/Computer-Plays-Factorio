@@ -63,33 +63,23 @@ namespace ComputerPlaysFactorio {
         InitStatic();
         s_instances.insert(this);
 
-        SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (s == INVALID_SOCKET) {
-            g_error << "socket" << std::endl;
-            exit(1);
-        }
-        SOCKADDR_IN addr;
-        SOCKLEN len = sizeof(addr);
-        memset(&addr, 0, len);
-        addr.sin_family = AF_INET;
+        FindAvailablePort();
 
-        if (bind(s, (SOCKADDR*)&addr, len) == SOCKET_ERROR) {
-            g_error << "bind" << std::endl;
-            exit(1);
-        }
-
-        if (getsockname(s, (SOCKADDR*)&addr, &len) == SOCKET_ERROR) {
-            g_error << "getsockname " << std::endl;
-            exit(1);
-        }
-        closesocket(s);
-        m_rconPort = addr.sin_port;
+        RegisterEvents();
 
         if (listener) {
-            connect(&m_process, &QProcess::readyReadStandardOutput, this, &FactorioInstance::StdoutListener);
+            connect(&m_process, &QProcess::readyReadStandardOutput, [this] {
+                auto bytes = m_process.readAllStandardOutput();
+                if (bytes.contains("Starting RCON")) {
+                    StartRCON();
+                }
+            });
         }
 
         connect(&m_process, &QProcess::started, [this]() {
+            m_outputListener = std::thread(&FactorioInstance::OutputListener, this);
+            m_outputListener.detach();
+
             emit Started(*this);
         });
 
@@ -105,24 +95,19 @@ namespace ComputerPlaysFactorio {
         });
 
         std::filesystem::create_directory(GetInstanceTempPath());
+
         if (std::filesystem::exists(GetDataPath() / "factorioConfig.ini")) {
             std::filesystem::copy(GetDataPath() / "factorioConfig.ini", 
                 GetConfigPath(), std::filesystem::copy_options::overwrite_existing);
         }
+
+        const auto outputDir = GetOutputPath().parent_path();
+        if (!std::filesystem::exists(outputDir)) {
+            std::filesystem::create_directory(outputDir);
+        }
     }
     
     void FactorioInstance::RegisterEvents() {
-        RegisterEvent<UpdatePathfinderData>("UpdatePathfinderData",
-            [this](const Event<UpdatePathfinderData> &e) {
-                for (const auto &pos : e.data.add) {
-                    if (!m_pathfinderData.contains(pos)) m_pathfinderData.insert(pos);
-                } 
-                
-                for (const auto &pos : e.data.remove) {
-                    if (m_pathfinderData.contains(pos)) m_pathfinderData.erase(pos);
-                }
-            }
-        );
     }
 
     void FactorioInstance::EditConfig(const std::string &category, const std::string &name, const std::string &value) {
@@ -171,6 +156,9 @@ namespace ComputerPlaysFactorio {
             return false;
         }
 
+        std::ofstream file(GetOutputPath());
+        file.close();
+
         EditConfig("path", "write-data", GetInstanceTempPath().string());
         EditConfig("path", "mods", GetLuaPath().string());
         EditConfig("path", "saves", (GetDataPath() / "saves").string());
@@ -212,78 +200,98 @@ namespace ComputerPlaysFactorio {
         CloseRCON();
     }
 
-    void FactorioInstance::StdoutListener() {
-        auto bytes = m_process.readAllStandardOutput();
-        std::unique_lock<std::mutex> lock(m_stdoutListenerMutex);
-        if (printStdout) std::cout << bytes.toStdString() << std::flush;
+    QJsonObject FactorioInstance::ReadJson(std::ifstream &file, int count, bool &success) {
+        char *buffer = new char[count + 1];
 
-        static QByteArray prevWord = "";
+        file.ignore();
+        file.get(buffer, count + 1);
+        if (!file.good()) {
+            success = false;
+            delete[] buffer;
+            return QJsonObject();
+        }
 
-        auto pos = bytes.begin();
-        bool exit = false;
-        while (!exit) {
-            auto it = std::find_if(pos, bytes.end(), [](const auto &x) {
-                return x == ' ' || x == '\n' || x == '\r' || x == '\0';
-            });
-            if (it == bytes.end()) exit = true;
-            QByteArray word(pos, it - pos);
-            pos = it + 1;
+        if (file.gcount() < count) {
+            g_error << "Failed to read JSON: count: " << count <<
+                ", read count: " << file.gcount() << ", read data: "
+                << buffer << std::endl;
 
-            if (prevWord == "Starting" && word == "RCON") {
-                StartRCON();
+            success = false;
+            delete[] buffer;
+            return QJsonObject();
+        }
+
+        auto document = QJsonDocument::fromJson(QByteArray(buffer, -1));
+        if (!document.isObject()) {
+            g_error << "Data is not a json object: " << buffer << std::endl;
+    
+            success = false;
+            delete[] buffer;
+            return QJsonObject();
+        }
+
+        success = true;
+        delete[] buffer;
+        return document.object();
+    }
+
+    void FactorioInstance::OutputListener() {
+        std::ifstream file(GetOutputPath());
+        if (!file.is_open()) {
+            g_error << "Failed to open output file" << std::endl;
+            exit(1);
+        }
+        g_info << "test" << std::endl;
+
+        std::string word;
+        while (Running()) {
+            char c = file.get();
+            if (!file.good()) break;
+
+            if (c == ' ' || c == '\n' || c == '\r') {
+                word.clear();
+            } else {
+                word += c;
             }
 
-            else if (word.startsWith("response") && word.length() > 8) {
-                uint32_t size = word.sliced(8).toInt();
-                auto end = bytes.end();
-                if (end - pos - 1 < size) {
-                    g_error << "Response too big: size: " << size << " data: " << std::string(pos, end) << std::endl;
-                    ::exit(1);
-                }
-
-                auto data = QJsonDocument::fromJson(QByteArray(pos, size));
-                if (!data.isObject()) {
-                    g_error << "Response is not a json object: " << std::string(pos, size) << std::endl;
+            if (word.starts_with("response") && word.length() > 8) {
+                int count = std::stoi(word.substr(8));
+                bool success;
+                auto data = ReadJson(file, count, success);
+                if (!success) {
+                    if (!file.good()) break;
+                    else continue;
                 }
 
                 ResponseBase rDataless;
-                FromJson(data.object(), rDataless);
-                g_info << QByteArray(pos, size).toStdString() << std::endl;
+                FromJson(data, rDataless);
                 if (m_pendingRequests.count(rDataless.id)) {
-                    m_pendingRequests[rDataless.id](data.object());
+                    m_pendingRequests[rDataless.id](data);
                     m_pendingRequests.erase(rDataless.id);
                 }
-
-                pos += size;
             }
 
-            else if (word == "event" && word.length() > 5) {
-                uint32_t size = word.sliced(5).toInt();
-                auto end = bytes.end();
-                if (end - pos - 1 < size) {
-                    g_error << "Event too big: size: " << size << " data: " << std::string(pos, end) << std::endl;
-                    ::exit(1);
-                }
-
-                auto data = QJsonDocument::fromJson(QByteArray(pos, size));
-                if (!data.isObject()) {
-                    g_error << "Event is not a json object: " << std::string(pos, size) << std::endl;
+            else if (word.starts_with("event") && word.length() > 5) {
+                int count = std::stoi(word.substr(5));
+                bool success;
+                auto data = ReadJson(file, count, success);
+                if (!success) {
+                    if (!file.good()) break;
+                    else continue;
                 }
 
                 EventBase rDataless;
-                FromJson(data.object(), rDataless);
-                g_info << QByteArray(pos, size).toStdString() << std::endl;
+                FromJson(data, rDataless);
                 if (m_eventHandlers.contains(rDataless.name)) {
-                    m_eventHandlers[rDataless.name](data.object());
+                    m_eventHandlers[rDataless.name](data);
                 } else {
                     g_warring << "No event handler named " << rDataless.name << " is registered." << std::endl;
                 }
-
-                pos += size;
             }
-
-            prevWord = word;
         }
+
+        file.close();
+        g_info << "exit" << std::endl;
     }
 
     void FactorioInstance::RegisterEvent(const std::string &name, EventCallbackDL callback) {
@@ -295,6 +303,30 @@ namespace ComputerPlaysFactorio {
                 callback(data);
             });
         };
+    }
+
+    void FactorioInstance::FindAvailablePort() {
+        SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (s == INVALID_SOCKET) {
+            g_error << "socket" << std::endl;
+            exit(1);
+        }
+        SOCKADDR_IN addr;
+        SOCKLEN len = sizeof(addr);
+        memset(&addr, 0, len);
+        addr.sin_family = AF_INET;
+
+        if (bind(s, (SOCKADDR*)&addr, len) == SOCKET_ERROR) {
+            g_error << "bind" << std::endl;
+            exit(1);
+        }
+
+        if (getsockname(s, (SOCKADDR*)&addr, &len) == SOCKET_ERROR) {
+            g_error << "getsockname " << std::endl;
+            exit(1);
+        }
+        closesocket(s);
+        m_rconPort = addr.sin_port;
     }
 
     void FactorioInstance::StartRCON() {
@@ -417,5 +449,35 @@ namespace ComputerPlaysFactorio {
         }
 
         return AddResponseBase(id);
+    }
+
+    const PathfinderData &FactorioInstance::GetPathfinderData(RequestError *error) {
+        std::unique_lock lock(m_pullPathfinderDataMutex);
+        auto future = Request<LuaPathfinderData>("PathfinderDataUpdate");
+        future.wait();
+        auto res = future.get();
+        lock.unlock();
+
+        if (!res.success) {
+            if (error) *error = res.error;
+            return m_pathfinderData;
+        }
+
+        auto transform = [](std::unordered_set<MapPosition> &data,
+            const std::vector<LuaPathfinderData::SubData> &rawData) {
+
+            for (const auto &subdata : rawData) {
+                if (subdata.a) {
+                    if (!data.contains(subdata.p)) data.insert(subdata.p);
+                } else {
+                    if (data.contains(subdata.p)) data.erase(subdata.p);
+                }
+            }
+        };
+
+        transform(m_pathfinderData.entity, res.data.entity);
+        transform(m_pathfinderData.chunk, res.data.chunk);
+
+        return m_pathfinderData;
     }
 }

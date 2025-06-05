@@ -4,7 +4,10 @@
 
 namespace ComputerPlaysFactorio {
 
-    using PathfinderData = std::unordered_set<MapPosition>;
+    struct PathfinderData {
+        std::unordered_set<MapPosition> entity;
+        std::unordered_set<MapPosition> chunk;
+    };
 
     // Returns an empty path if no path were found
     Path FindPath(const PathfinderData&, MapPosition start, MapPosition goal, float radius);
