@@ -23,7 +23,7 @@ namespace ComputerPlaysFactorio {
     }
 
     bool FactorioInstance::IsFactorioPathValid(const std::string &path, std::string &message) {
-        static FactorioInstance instance(HEADLESS, false);
+        static FactorioInstance instance(HEADLESS);
         instance.m_process.start(QString::fromStdString(path), { "--version" });
 
         if (!instance.m_process.waitForFinished(100)) {
@@ -59,7 +59,7 @@ namespace ComputerPlaysFactorio {
         }
     }
 
-    FactorioInstance::FactorioInstance(Type t, bool listener) : instanceType(t) {
+    FactorioInstance::FactorioInstance(Type t) : instanceType(t) {
         InitStatic();
         s_instances.insert(this);
 
@@ -67,23 +67,13 @@ namespace ComputerPlaysFactorio {
 
         RegisterEvents();
 
-        if (listener) {
-            connect(&m_process, &QProcess::readyReadStandardOutput, [this] {
-                auto bytes = m_process.readAllStandardOutput();
-                if (bytes.contains("Starting RCON")) {
-                    StartRCON();
-                }
-            });
-        }
-
         connect(&m_process, &QProcess::started, [this]() {
-            m_outputListener = std::thread(&FactorioInstance::OutputListener, this);
-            m_outputListener.detach();
-
             emit Started(*this);
         });
 
         connect(&m_process, &QProcess::finished, [this](int exitCode, QProcess::ExitStatus status) {
+            m_stdoutListenerExit = true;
+            CloseRCON();
             for (auto &[id, request] : m_pendingRequests) {
                 auto res = ResponseBase{.id = id, .success = false, .error = FACTORIO_EXITED};
                 auto json = ToJson(res);
@@ -99,11 +89,6 @@ namespace ComputerPlaysFactorio {
         if (std::filesystem::exists(GetDataPath() / "factorioConfig.ini")) {
             std::filesystem::copy(GetDataPath() / "factorioConfig.ini", 
                 GetConfigPath(), std::filesystem::copy_options::overwrite_existing);
-        }
-
-        const auto outputDir = GetOutputPath().parent_path();
-        if (!std::filesystem::exists(outputDir)) {
-            std::filesystem::create_directory(outputDir);
         }
     }
     
@@ -156,9 +141,6 @@ namespace ComputerPlaysFactorio {
             return false;
         }
 
-        std::ofstream file(GetOutputPath());
-        file.close();
-
         EditConfig("path", "write-data", GetInstanceTempPath().string());
         EditConfig("path", "mods", GetLuaPath().string());
         EditConfig("path", "saves", (GetDataPath() / "saves").string());
@@ -189,6 +171,10 @@ namespace ComputerPlaysFactorio {
         }
 
         m_process.start(QString::fromStdString(s_factorioPath), argv);
+
+        m_stdoutListenerExit = false;
+        m_stdoutListener = std::thread(&FactorioInstance::StdoutListener, this);
+        m_stdoutListener.detach();
         return true;
     }
 
@@ -196,102 +182,92 @@ namespace ComputerPlaysFactorio {
         std::unique_lock<std::mutex> lock(m_mutex);
         if (!Running()) return;
 
+        m_stdoutListenerExit = true;
         m_process.kill();
         CloseRCON();
     }
 
-    QJsonObject FactorioInstance::ReadJson(std::ifstream &file, int count, bool &success) {
-        char *buffer = new char[count + 1];
+    QJsonObject FactorioInstance::ReadJson(int count, bool &success) {
+        QJsonDocument json;
+        success = false;
 
-        file.ignore();
-        file.get(buffer, count + 1);
-        if (!file.good()) {
-            success = false;
-            delete[] buffer;
-            return QJsonObject();
+        char *buffer = new char[count];
+        uint64_t size = 0;
+        while (size < count && !m_stdoutListenerExit) {
+            if (!m_process.waitForReadyRead(500)) continue;
+
+            uint64_t readCount = m_process.read(buffer + size, count - size);
+            if (readCount == -1) goto returnLabel;
+
+            size += readCount;
         }
 
-        if (file.gcount() < count) {
-            g_error << "Failed to read JSON: count: " << count <<
-                ", read count: " << file.gcount() << ", read data: "
-                << buffer << std::endl;
+        if (m_stdoutListenerExit) goto returnLabel;
 
-            success = false;
-            delete[] buffer;
-            return QJsonObject();
-        }
-
-        auto document = QJsonDocument::fromJson(QByteArray(buffer, -1));
-        if (!document.isObject()) {
+        json = QJsonDocument::fromJson(QByteArray(buffer, -1));
+        if (!json.isObject()) {
             g_error << "Data is not a json object: " << buffer << std::endl;
-    
-            success = false;
-            delete[] buffer;
-            return QJsonObject();
+            goto returnLabel;
         }
 
         success = true;
+returnLabel:
         delete[] buffer;
-        return document.object();
+        return json.object();
     }
 
-    void FactorioInstance::OutputListener() {
-        std::ifstream file(GetOutputPath());
-        if (!file.is_open()) {
-            g_error << "Failed to open output file" << std::endl;
-            exit(1);
+    void FactorioInstance::CheckWord(const std::string &previousWord, const std::string &word) {
+        if (previousWord == "Starting" && word == "RCON") {
+            StartRCON();
         }
-        g_info << "test" << std::endl;
 
-        std::string word;
-        while (Running()) {
-            char c = file.get();
-            if (!file.good()) break;
+        else if (word.starts_with("response") && word.length() > 8) {
+            int count = std::stoi(word.substr(8));
+            bool success;
+            auto data = ReadJson(count, success);
+            if (!success) return;
 
-            if (c == ' ' || c == '\n' || c == '\r') {
-                word.clear();
+            ResponseBase rDataless;
+            FromJson(data, rDataless);
+            if (m_pendingRequests.count(rDataless.id)) {
+                m_pendingRequests[rDataless.id](data);
+                m_pendingRequests.erase(rDataless.id);
+            }
+        }
+
+        else if (word.starts_with("event") && word.length() > 5) {
+            int count = std::stoi(word.substr(5));
+            bool success;
+            auto data = ReadJson(count, success);
+            if (!success) return;
+
+            EventBase rDataless;
+            FromJson(data, rDataless);
+            if (m_eventHandlers.contains(rDataless.name)) {
+                m_eventHandlers[rDataless.name](data);
             } else {
-                word += c;
-            }
-
-            if (word.starts_with("response") && word.length() > 8) {
-                int count = std::stoi(word.substr(8));
-                bool success;
-                auto data = ReadJson(file, count, success);
-                if (!success) {
-                    if (!file.good()) break;
-                    else continue;
-                }
-
-                ResponseBase rDataless;
-                FromJson(data, rDataless);
-                if (m_pendingRequests.count(rDataless.id)) {
-                    m_pendingRequests[rDataless.id](data);
-                    m_pendingRequests.erase(rDataless.id);
-                }
-            }
-
-            else if (word.starts_with("event") && word.length() > 5) {
-                int count = std::stoi(word.substr(5));
-                bool success;
-                auto data = ReadJson(file, count, success);
-                if (!success) {
-                    if (!file.good()) break;
-                    else continue;
-                }
-
-                EventBase rDataless;
-                FromJson(data, rDataless);
-                if (m_eventHandlers.contains(rDataless.name)) {
-                    m_eventHandlers[rDataless.name](data);
-                } else {
-                    g_warring << "No event handler named " << rDataless.name << " is registered." << std::endl;
-                }
+                g_warring << "No event handler named " << rDataless.name << " is registered." << std::endl;
             }
         }
+    }
 
-        file.close();
-        g_info << "exit" << std::endl;
+    void FactorioInstance::StdoutListener() {
+        char c;
+        std::string word, previousWord;
+        while (!m_stdoutListenerExit) {
+            if (!m_process.waitForReadyRead(500)) continue;
+            g_info << m_process.pos() << std::endl;
+            if (!m_process.getChar(&c)) continue;
+
+            if (c != ' ' && c != '\n' && c != '\r' && c != '\0') {
+                word += c;
+            } else {
+                CheckWord(previousWord, word);
+
+                previousWord = std::move(word);
+                word.clear();
+            }
+        }
     }
 
     void FactorioInstance::RegisterEvent(const std::string &name, EventCallbackDL callback) {

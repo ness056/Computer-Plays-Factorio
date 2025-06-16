@@ -59,9 +59,7 @@ RequestError = {
 ---@param prefix string
 ---@param data string
 local function SendData(prefix, data)
-    local player_index = 1
-    if game.is_multiplayer() then player_index = 0 end
-    helpers.write_file("output.txt", prefix .. data:len() .. " " .. data, true, player_index)
+    print(prefix .. data:len() .. " " .. data)
 end
 
 ---@generic T

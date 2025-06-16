@@ -42,18 +42,24 @@ namespace ComputerPlaysFactorio {
         bool Join();
         bool Running();
 
-        inline const FactorioInstance &GetFactorioInstance() {
+        size_t InstructionCount();
+
+        inline const FactorioInstance &GetFactorioInstance() const {
             return m_instance;
         }
 
     private:
+        // The calling function should lock m_instructionMutex
+        Instruction *GetInstruction();
+        void PopInstruction();
+        void ClearInstructions();
+        void PopTask();
+        std::mutex m_instructionMutex;
+        std::condition_variable m_instructionCond;
+
         void Loop();
-        
-        void ClearQueue();
 
         std::thread m_loopThread;
-        std::mutex m_loopMutex;
-        std::condition_variable m_loopCond;
         bool m_exit;
 
         EventManager m_eventManager;

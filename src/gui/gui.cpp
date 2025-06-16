@@ -1,8 +1,11 @@
 #include "gui.hpp"
+#include "../utils/thread.hpp"
 
 namespace ComputerPlaysFactorio {
 
     MainWindow::MainWindow() {
+        ThreadPool::Start(4);
+
         setWindowTitle("Computer Plays Factorio");
         setMinimumSize(200, 200);
         resize(800, 600);
@@ -23,6 +26,9 @@ namespace ComputerPlaysFactorio {
     MainWindow::~MainWindow() {
         FactorioInstance::StopAll();
         FactorioInstance::JoinAll();
+
+        ThreadPool::Stop();
+
         ClearTempDirectory();
     }
 

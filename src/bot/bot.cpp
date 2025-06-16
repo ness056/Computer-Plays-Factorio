@@ -13,7 +13,8 @@ namespace ComputerPlaysFactorio {
         });
 
         m_eventManager.connect(&m_eventManager, &EventManager::NewInstruction, [this] {
-            m_loopCond.notify_all();
+            std::scoped_lock lock(m_instructionMutex);
+            m_instructionCond.notify_all();
         });
     }
    
@@ -28,14 +29,46 @@ namespace ComputerPlaysFactorio {
     }
    
     void Bot::Stop() {
-        ClearQueue();
+        ClearInstructions();
         m_exit = true;
         m_instance.Stop();
     }
 
-    void Bot::ClearQueue() {
-        std::unique_lock lock(m_loopMutex);
+    size_t Bot::InstructionCount() {
+        std::scoped_lock lock(m_instructionMutex);
+        size_t sum = 0;
+        for (auto &task : m_tasks) {
+            sum += task->InstructionCount();
+        }
+        return sum;
+    }
+
+    Instruction *Bot::GetInstruction() {
+        std::unique_lock lock(m_instructionMutex);
+        while (true) {
+            if (!m_tasks.empty()) {
+                auto instruction = m_tasks.front()->GetInstruction();
+                if (instruction) return instruction;
+            }
+    
+            m_instructionCond.wait(lock);
+        }
+    }
+
+    void Bot::PopInstruction() {
+        std::scoped_lock lock(m_instructionMutex);
+        if (m_tasks.empty()) return;
+        m_tasks.front()->PopInstruction();
+    }
+
+    void Bot::ClearInstructions() {
+        std::scoped_lock lock(m_instructionMutex);
         m_tasks.clear();
+    }
+
+    void Bot::PopTask() {
+        std::scoped_lock lock(m_instructionMutex);
+        m_tasks.pop_front();
     }
 
     bool Bot::Join() {
@@ -49,21 +82,14 @@ namespace ComputerPlaysFactorio {
 
     void Bot::Loop() {
         while(!m_exit) {
-            {
-                std::unique_lock lock(m_loopMutex);
-                m_loopCond.wait(lock);
+            Instruction *instruction = GetInstruction();
+            if (instruction->GetType() == Instruction::TASK_END) {
+                PopTask();
+                continue;
             }
-            if (m_exit) break;
 
-            Instruction *instruction;
-            {
-                std::scoped_lock lock(m_loopMutex);
-
-                if (m_tasks.empty()) continue;
-                instruction = m_tasks.front()->GetInstruction();
-                if (!instruction) continue;
-            }
             instruction->Call(m_instance);
+            PopInstruction();
         }
     }
 }

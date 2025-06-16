@@ -149,7 +149,7 @@ namespace ComputerPlaysFactorio {
         static void StopAll();
         static void JoinAll();
 
-        FactorioInstance(Type type, bool defaultStdoutListener = true);
+        FactorioInstance(Type type);
         // Blocks the thread to wait for Factorio to stop !
         inline ~FactorioInstance() {
             s_instances.erase(this);
@@ -170,7 +170,7 @@ namespace ComputerPlaysFactorio {
         bool Start(uint32_t seed, std::string *message = nullptr);
         void Stop();
         inline bool Join() {
-            if (m_outputListener.joinable()) m_outputListener.join();
+            if (m_stdoutListener.joinable()) m_stdoutListener.join();
             return m_process.waitForFinished(-1);
         }
 
@@ -205,6 +205,14 @@ namespace ComputerPlaysFactorio {
         };
         const PathfinderData &GetPathfinderData(RequestError* = nullptr);
 
+        template<typename T>
+        using EventCallback = std::function<void(const Event<T>&)>;
+        using EventCallbackDL = std::function<void(const EventBase&)>;
+
+        template<typename T>
+        void RegisterEvent(const std::string &name, EventCallback<T>);
+        void RegisterEvent(const std::string &name, EventCallbackDL);
+
         const Type instanceType;
 
     signals:
@@ -226,13 +234,14 @@ namespace ComputerPlaysFactorio {
         QProcess m_process;
         std::mutex m_mutex;
         
-        QJsonObject ReadJson(std::ifstream&, int count, bool &success);
-        void OutputListener();
-        std::thread m_outputListener;
+        QJsonObject ReadJson(int count, bool &success);
+        void CheckWord(const std::string &previousWord, const std::string &word);
+        void StdoutListener();
+        std::thread m_stdoutListener;
+        bool m_stdoutListenerExit;
 
         inline std::filesystem::path GetInstanceTempPath() { return GetTempDir() / ("data" + std::to_string(m_id)); }
         inline std::filesystem::path GetConfigPath() { return GetInstanceTempPath() / "config.ini"; }
-        inline std::filesystem::path GetOutputPath() { return GetInstanceTempPath() / "script-output/output.txt"; }
         void EditConfig(const std::string &category, const std::string &name, const std::string &value);
 
         std::map<uint32_t, std::function<void(const QJsonObject &data)>> m_pendingRequests;
@@ -245,14 +254,6 @@ namespace ComputerPlaysFactorio {
         std::future<ResponseBase> AddResponseBase(uint32_t id);
 
         std::map<std::string, std::function<void(const QJsonObject &data)>> m_eventHandlers;
-
-        template<typename T>
-        using EventCallback = std::function<void(const Event<T>&)>;
-        using EventCallbackDL = std::function<void(const EventBase&)>;
-
-        template<typename T>
-        void RegisterEvent(const std::string &name, EventCallback<T>);
-        void RegisterEvent(const std::string &name, EventCallbackDL);
 
         void FindAvailablePort();
         void StartRCON();

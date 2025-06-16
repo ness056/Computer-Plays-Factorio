@@ -51,12 +51,20 @@
  *      SERIALIZABLE_END
  * 
  *      // Additionally, in case all the included members can be named automatically,
- *      // you can use the following macro instead of the 4 lines above:
+ *      // you can use the following macro:
  *      SERIALIZABLE(Test<T>, a, b, c, d, e, f, g)
+ *      // Instead of:
+ *      SERIALIZABLE_BEGIN
+ *          PROPERTIES(Test<T>, a, b, c, d, e, f, g)
+ *      SERIALIZABLE_END
  * 
- *      // Likewise, in case all you want to give a custom name to all the included members,
+ *      // Likewise, in case you want to give a custom name to all the included members,
  *      // you can use the following macro:
  *      SERIALIZABLE_CUSTOM_NAMES(Test<T>, "k", m_k, "l", m_l)
+ *      // Instead of:
+ *      SERIALIZABLE_BEGIN
+ *          PROPERTIES_CUSTOM_NAMES(Test<T>, "k", m_k, "l", m_l)
+ *      SERIALIZABLE_END
  *  };
  * 
  *  int main() {
@@ -120,38 +128,40 @@ private:\
     SERIALIZABLE_END
 
 template<typename T, typename = int>
-struct HasSerializerProperties : std::false_type {};
+struct has_serializer_properties : std::false_type {};
 
 template<typename T>
-struct HasSerializerProperties<T, decltype((void)T::s_properties, 0)> : std::true_type {};
+struct has_serializer_properties<T, decltype((void)T::s_properties, 0)> : std::true_type {};
 
 template<typename>
-struct IsVector : std::false_type {};
+struct is_vector : std::false_type {};
 
 template<typename T, typename A>
-struct IsVector<std::vector<T,A>> : std::true_type {};
+struct is_vector<std::vector<T, A>> : std::true_type {};
 
 template<typename>
-struct IsStringMap : std::false_type {};
+struct is_map : std::false_type {};
 
-template<typename T, typename A>
-struct IsStringMap<std::map<std::string, T, A>> : std::true_type {};
+template<typename K, typename T, typename A>
+struct is_map<std::map<K, T, A>> : std::true_type {};
 
-#define SERIALIZABLE_ASSERT(type) static_assert( \
-    std::is_same_v<type, bool> || \
-    std::is_integral_v<type> || std::is_enum_v<type> || \
-    std::is_floating_point_v<type> || \
-    std::is_same_v<type, std::string> || \
-    IsVector<type>::value || \
-    IsStringMap<type>::value || \
-    ( \
-        std::is_class_v<type> && \
-        HasSerializerProperties<type>::value \
-    ), \
-    "The given type is not serializable. See the list of serializable types in" \
-    " utils/serializer.hpp." \
-    " (If the compiler gives you a stack trace, the type's name should be in it." \
-    " If it doesn't give you that, well good luck!)" \
+template<typename T>
+constexpr bool is_serializable_v = std::is_same_v<T, bool> ||
+    std::is_integral_v<T> || std::is_enum_v<T> ||
+    std::is_floating_point_v<T> ||
+    std::is_same_v<T, std::string> ||
+    is_vector<T>::value ||
+    is_map<std::string, T>::value ||
+    (
+        std::is_class_v<T> &&
+        has_serializer_properties<T>::value
+    );
+
+#define SERIALIZABLE_ASSERT(type) static_assert(is_serializable_v<type>, \
+    "The given type is not serializable. See the list of serializable types in " \
+    "utils/serializer.hpp. " \
+    "(If the compiler gives you a stack trace, the type's name should be in it. " \
+    "If it doesn't give you that, well good luck!)" \
 );
 
     inline QJsonValue ToJson(const bool &v) {
