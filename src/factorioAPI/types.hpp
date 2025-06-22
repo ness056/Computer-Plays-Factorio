@@ -24,11 +24,11 @@ namespace ComputerPlaysFactorio {
         constexpr MapPosition() : x(0), y(0) {}
         constexpr MapPosition(double x_, double y_) : x(x_), y(y_) {}
 
-        inline std::string ToString() {
+        inline std::string ToString() const {
             return "(" + std::to_string(x) + "; " + std::to_string(y) + ")";
         }
 
-        inline MapPosition Abs() {
+        inline MapPosition Abs() const {
             return MapPosition(std::abs(x), std::abs(y));
         }
 
@@ -62,7 +62,7 @@ namespace ComputerPlaysFactorio {
             return !(lhs == rhs);
         }
 
-        constexpr MapPosition ChunkPosition() {
+        constexpr MapPosition ChunkPosition() const {
             return MapPosition(std::floor(x / 32), std::floor(y / 32));
         }
 
@@ -74,34 +74,16 @@ namespace ComputerPlaysFactorio {
 
     struct Area {
         constexpr Area() = default;
-        constexpr Area(MapPosition topLeft_, MapPosition bottomRight_) :
-            topLeft(topLeft_), bottomRight(bottomRight_) {}
+        constexpr Area(MapPosition leftTop_, MapPosition rightBottom_) :
+            leftTop(leftTop_), rightBottom(rightBottom_) {}
 
-        MapPosition topLeft;
-        MapPosition bottomRight;
+        MapPosition leftTop;
+        MapPosition rightBottom;
 
-        SERIALIZABLE_CUSTOM_NAMES(Area, "top_left", topLeft, "bottom_right", bottomRight);
+        SERIALIZABLE_CUSTOM_NAMES(Area, "left_top", leftTop, "right_bottom", rightBottom);
     };
 
-    // https://lua-api.factorio.com/stable/concepts/PathfinderWaypoint.html
-    struct PathfinderWaypoint {
-        PathfinderWaypoint(MapPosition pos_, bool needsDestroyToReach_) :
-            pos(pos_), needsDestroyToReach(needsDestroyToReach_) {}
-
-        MapPosition pos;
-        bool needsDestroyToReach;
-
-        SERIALIZABLE_CUSTOM_NAMES(PathfinderWaypoint, "position", pos, "needs_destroy_to_reach", needsDestroyToReach);
-    };
-
-    using Path = std::vector<PathfinderWaypoint>;
-
-    struct RequestPathData {
-        MapPosition start;
-        MapPosition goal;
-
-        SERIALIZABLE(RequestPathData, start, goal);
-    };
+    using Path = std::vector<MapPosition>;
 
     struct Entity {
         std::string name;

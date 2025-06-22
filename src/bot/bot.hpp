@@ -9,7 +9,7 @@
  *      Definitions:
  * 
  * - Instructions are the lowest level of abstraction for the bot to control the player.
- *   Instructions are generated can be generated either by tasks or by the event manager.
+ *   Instructions can be generated either by tasks or by the event manager.
  *   The execution of an instruction will never be interrupted (See interruption definition).
  * 
  * - Tasks are the highest level of abstraction to control the bot and are directly

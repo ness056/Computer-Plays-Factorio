@@ -129,7 +129,11 @@ end, getAreaReachEntity)
 ---@param request Request<EntitySearchFilters>
 API.AddRequestHandler("FindEntitiesFiltered", function (request)
     local surface = game.get_surface(1) --[[@as LuaSurface]]
+    if #request.data.type == 0 then request.data.type = nil end
+    if #request.data.name == 0 then request.data.name = nil end
+    log(serpent.block(request))
     local entities = surface.find_entities_filtered(request.data)
+    log(serpent.block(entities))
     local r = {}
 
     for k, entity in pairs(entities) do
@@ -140,5 +144,6 @@ API.AddRequestHandler("FindEntitiesFiltered", function (request)
         })
     end
 
+    log(serpent.block(r))
     API.Success(request, r)
 end)

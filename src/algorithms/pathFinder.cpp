@@ -1,6 +1,7 @@
 #include "pathFinder.hpp"
 
 #include <algorithm>
+#include <iostream>
 
 namespace ComputerPlaysFactorio {
     
@@ -51,7 +52,7 @@ namespace ComputerPlaysFactorio {
         return 10 * (delta.x + delta.y) - 6 * std::min(delta.x, delta.y);
     }
 
-    std::vector<std::tuple<MapPosition, Path>> FindStepPath(
+    std::vector<std::tuple<MapPosition, Path>> FindMultiPath(
         const PathfinderData& data, MapPosition start, std::vector<std::tuple<MapPosition, float>> points) {
 
         for (auto &point : points) {
@@ -59,13 +60,14 @@ namespace ComputerPlaysFactorio {
             radius *= radius;
         }
 
+        MapPosition currentStartingPos = start;
         std::vector<std::tuple<MapPosition, Path>> pathChain;
         while (!points.empty()) {
             Node *current = nullptr;
             NodeSet openSet, closedSet;
             openSet.reserve(100);
             closedSet.reserve(100);
-            openSet.push_back(new Node(start));
+            openSet.push_back(new Node(currentStartingPos));
 
             auto point_it = points.end();
             while (true) {
@@ -82,12 +84,15 @@ namespace ComputerPlaysFactorio {
                     }
                 }
 
+                bool pointReached = false;
                 for (auto it = points.begin(); it != points.end(); it++) {
                     if (SqDistance(current->pos, std::get<MapPosition>(*it)) < std::get<float>(*it)) {
+                        currentStartingPos = current->pos;
                         point_it = it;
-                        break;
+                        pointReached = true;
                     }
                 }
+                if (pointReached) break;
 
                 closedSet.push_back(current);
                 openSet.erase(current_it);
@@ -104,6 +109,7 @@ namespace ComputerPlaysFactorio {
                     if (successor == nullptr) {
                         successor = new Node(newPos, current);
                         successor->G = totalCost;
+                        successor->H = 0;
                         openSet.push_back(successor);
                     }
                     else if (totalCost < successor->G) {
@@ -111,27 +117,32 @@ namespace ComputerPlaysFactorio {
                         successor->G = totalCost;
                     }
                 }
-
-                if (point_it == points.end()) break;
-
-                auto &tuple = pathChain.emplace_back();
-                auto &path = std::get<Path>(tuple);
-                path.reserve(25);
-
-                while (current->parent != nullptr) {
-                    Node *previous = current;
-                    current = current->parent;
-                    current->child = previous;
-                }
-
-                while (current != nullptr) {
-                    path.emplace_back(current->pos, false);
-                    current = current->child;
-                }
-                
-                ReleaseNodes(openSet);
-                ReleaseNodes(closedSet);
             }
+
+            if (point_it == points.end()) break;
+
+            auto &tuple = pathChain.emplace_back();
+            auto &path = std::get<Path>(tuple);
+
+            size_t nbWaypoints = 1;
+            while (current->parent != nullptr) {
+                Node *previous = current;
+                current = current->parent;
+                current->child = previous;
+                nbWaypoints++;
+            }
+
+            path.reserve(nbWaypoints);
+            std::cout << "Point: " << std::get<MapPosition>(*point_it).ToString() << std::endl;
+            while (current != nullptr) {
+                std::cout << current->pos.ToString() << std::endl;
+                path.emplace_back(current->pos);
+                current = current->child;
+            }
+            
+            ReleaseNodes(openSet);
+            ReleaseNodes(closedSet);
+            points.erase(point_it);
         }
 
         return pathChain;
@@ -192,16 +203,17 @@ namespace ComputerPlaysFactorio {
 
         Path path;
         if (pathFound) {
-            path.reserve(25);
-
+            size_t nbWaypoints = 1;
             while (current->parent != nullptr) {
                 Node *previous = current;
                 current = current->parent;
                 current->child = previous;
+                nbWaypoints++;
             }
 
+            path.reserve(nbWaypoints);
             while (current != nullptr) {
-                path.emplace_back(current->pos, false);
+                path.emplace_back(current->pos);
                 current = current->child;
             }
         }

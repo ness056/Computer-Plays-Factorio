@@ -28,53 +28,47 @@ namespace ComputerPlaysFactorio {
 
     class LoggingStream {
     public:
-        LoggingStream(const std::string &name);
+        LoggingStream();
 
         LoggingStream &operator<<(std::ostream&(*f)(std::ostream&)) {
-            LoggingStream::file << f;
+            LoggingStream::s_file << f;
             std::cout << f;
             if (f == std::endl<char, std::char_traits<char>>) {
-                newLine = true;
+                m_newLine = true;
             }
             return *this;
         }
 
-        const std::string name;
-
         template<class T>
-        friend LoggingStream &operator<<(LoggingStream &ls, T val);
+        LoggingStream &operator<<(T val) {
+            if (m_newLine) {
+                auto timeElapsed = std::chrono::high_resolution_clock::now() - g_startTime;
+                double sec = timeElapsed.count() / 1e9;
+                int nbSpaces = 4 - (int)std::floor(std::log10(sec));
+
+                std::stringstream ss;
+                ss << std::string(std::max(0, nbSpaces), ' ') << std::fixed << std::setprecision(3) << sec;
+
+                LoggingStream::s_file << ss.str();
+                std::cout << ss.str();
+                m_newLine = false;
+            }
+
+            LoggingStream::s_file << val;
+            std::cout << val;
+            return *this;
+        }
 
         static inline void CloseFile() {
-            if (file.is_open()) file.close();
+            if (s_file.is_open()) s_file.close();
         }
 
     private:
-        static inline std::ofstream file;
-        bool newLine = true;
+        static inline std::ofstream s_file;
+        bool m_newLine = true;
     };
 
-    extern LoggingStream g_info;
-    extern LoggingStream g_warring;
-    extern LoggingStream g_error;
-
-    template<class T>
-    LoggingStream &operator<<(LoggingStream &ls, T val) {
-        if (ls.newLine) {
-            auto time = std::chrono::high_resolution_clock::now() - g_startTime;
-            double sec = time.count() / 1e9;
-            int spaces = 4 - (int)std::floor(std::log10(sec));
-            std::stringstream ss;
-            ss << std::string(std::max(0, spaces), ' ') << std::fixed << std::setprecision(3) << sec << ls.name;
-
-            LoggingStream::file << ss.str();
-            std::cout << ss.str();
-            ls.newLine = false;
-        }
-
-        LoggingStream::file << val;
-        std::cout << val;
-        return ls;
-    }
+    extern LoggingStream g_log;
 
     std::filesystem::path GetRootPath();
     std::filesystem::path GetTempDir();

@@ -169,9 +169,8 @@ namespace ComputerPlaysFactorio {
         }
         bool Start(uint32_t seed, std::string *message = nullptr);
         void Stop();
-        inline bool Join() {
-            if (m_stdoutListener.joinable()) m_stdoutListener.join();
-            return m_process.waitForFinished(-1);
+        inline bool Join(int ms = -1) {
+            return m_process.waitForFinished(ms);
         }
 
         bool SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND) const;
@@ -221,6 +220,9 @@ namespace ComputerPlaysFactorio {
         void Closed(FactorioInstance&);     // Emitted after RCON connection was closed
         void Terminated(FactorioInstance&, int exitCode, QProcess::ExitStatus);
 
+    private slots:
+        void StdoutListener();
+
     private:
         static void InitStatic();
         static bool s_initStatic;
@@ -234,11 +236,11 @@ namespace ComputerPlaysFactorio {
         QProcess m_process;
         std::mutex m_mutex;
         
-        QJsonObject ReadJson(int count, bool &success);
-        void CheckWord(const std::string &previousWord, const std::string &word);
-        void StdoutListener();
-        std::thread m_stdoutListener;
-        bool m_stdoutListenerExit;
+        void CheckWord(const QByteArray &previousWord, const QByteArray &word);
+        QByteArray::iterator ReadJson(const QByteArray::iterator start, const QByteArray::iterator end);
+        int m_msgByteRemaining = 0;
+        QByteArray m_msgBuffer;
+        std::function<void(const QJsonObject&)> m_msgCallback;
 
         inline std::filesystem::path GetInstanceTempPath() { return GetTempDir() / ("data" + std::to_string(m_id)); }
         inline std::filesystem::path GetConfigPath() { return GetInstanceTempPath() / "config.ini"; }
@@ -255,6 +257,9 @@ namespace ComputerPlaysFactorio {
 
         std::map<std::string, std::function<void(const QJsonObject &data)>> m_eventHandlers;
 
+        // Find a suitable port for Factorio to use for RCON.
+        // This function might not work in some *really* specific situation
+        // so it should be changed for something better at some point.
         void FindAvailablePort();
         void StartRCON();
         void CloseRCON();

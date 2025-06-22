@@ -32,7 +32,7 @@ namespace ComputerPlaysFactorio {
         }
 
         PathfinderData pathfinderData = m_instance->GetPathfinderData();
-        auto paths = FindStepPath(pathfinderData, {0, 0}, points);
+        auto paths = FindMultiPath(pathfinderData, {0, 0}, points);
 
         QueueInstruction([paths](FactorioInstance &instance) {
             for (auto &path : paths) {

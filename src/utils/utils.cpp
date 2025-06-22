@@ -2,16 +2,14 @@
 
 namespace ComputerPlaysFactorio {
 
-    extern const std::chrono::high_resolution_clock::time_point g_startTime =
+    const std::chrono::high_resolution_clock::time_point g_startTime =
         std::chrono::high_resolution_clock::now();
 
-    LoggingStream g_info("Info");
-    LoggingStream g_warring("Warring");
-    LoggingStream g_error("Error");
+    LoggingStream g_log;
 
-    LoggingStream::LoggingStream(const std::string &n) : name(" " + n + " ") {
-        if (!file.is_open()) {
-            file.open(GetTempDir() / "computer-plays-factorio.log");
+    LoggingStream::LoggingStream() {
+        if (!s_file.is_open()) {
+            s_file.open(GetTempDir() / "computer-plays-factorio.log");
         }
     }
 
@@ -42,7 +40,7 @@ namespace ComputerPlaysFactorio {
         if (lock == INVALID_HANDLE_VALUE) {
             lock = CreateFileA(lockPath.string().c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
             if (lock == INVALID_HANDLE_VALUE) {
-                g_error << "Failed to create lock" << std::endl;
+                g_log << "Failed to create lock" << std::endl;
                 exit(1);
             }
         }
@@ -50,7 +48,7 @@ namespace ComputerPlaysFactorio {
         if (fd < 0) {
             fd = open(lockPath.string().c_str(), O_RDWR | O_CREAT, 0666);
             if (fd < 0 || flock(fd, LOCK_EX | LOCK_NB) != 0) {
-                g_error << "Failed to create lock" << std::endl;
+                g_log << "Failed to create lock" << std::endl;
                 exit(1);
             }
         }

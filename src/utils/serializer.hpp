@@ -14,7 +14,7 @@
  * Used to serialize data sent between C++ and Factorio.
  * 
  * Supports booleans, all numeric values, enums, strings, vectors and
- *  maps with string as keys.
+ *  maps with string as keys (json objects).
  * Custom classes can also be serialized if they specify which members
  *  should be serialized (see example below).
  * 
@@ -88,81 +88,78 @@ namespace ComputerPlaysFactorio {
         T Class:: *member;
     };
 
-#define SERIALIZABLE_BEGIN \
-private:\
-    template<class __T__>\
-    friend QJsonObject ToJson(const __T__ &v);\
-    template<class __T__>\
-    friend void FromJson(const QJsonValue &json, __T__ &out);\
-    constexpr static auto s_properties = std::make_tuple(
+    #define SERIALIZABLE_BEGIN \
+    public:\
+        template<class __T__>\
+        friend QJsonObject ToJson(const __T__ &v);\
+        template<class __T__>\
+        friend void FromJson(const QJsonValue &json, __T__ &out);\
+        constexpr static auto s_properties = std::make_tuple(
 
-#define SERIALIZABLE_END );
+    #define SERIALIZABLE_END );
 
-#define PARENS ()
-#define COMMA ,
+    #define PARENS ()
+    #define COMMA ,
 
-#define EXPAND(...) EXPAND4(EXPAND4(EXPAND4(EXPAND4(__VA_ARGS__))))
-#define EXPAND4(...) EXPAND3(EXPAND3(EXPAND3(EXPAND3(__VA_ARGS__))))
-#define EXPAND3(...) EXPAND2(EXPAND2(EXPAND2(EXPAND2(__VA_ARGS__))))
-#define EXPAND2(...) EXPAND1(EXPAND1(EXPAND1(EXPAND1(__VA_ARGS__))))
-#define EXPAND1(...) __VA_ARGS__
+    #define EXPAND(...) EXPAND4(EXPAND4(EXPAND4(EXPAND4(__VA_ARGS__))))
+    #define EXPAND4(...) EXPAND3(EXPAND3(EXPAND3(EXPAND3(__VA_ARGS__))))
+    #define EXPAND3(...) EXPAND2(EXPAND2(EXPAND2(EXPAND2(__VA_ARGS__))))
+    #define EXPAND2(...) EXPAND1(EXPAND1(EXPAND1(EXPAND1(__VA_ARGS__))))
+    #define EXPAND1(...) __VA_ARGS__
 
-#define PROPERTIES(type, ...) __VA_OPT__(EXPAND(PROPERTIES_HELPER(type, __VA_ARGS__)))
-#define PROPERTIES_HELPER(type, v, ...) \
-    SerializerProperty(#v, &type::v) __VA_OPT__(COMMA PROPERTIES_AGAIN PARENS (type, __VA_ARGS__))
-#define PROPERTIES_AGAIN() PROPERTIES_HELPER
+    #define PROPERTIES(type, ...) __VA_OPT__(EXPAND(PROPERTIES_HELPER(type, __VA_ARGS__)))
+    #define PROPERTIES_HELPER(type, v, ...) \
+        SerializerProperty(#v, &type::v) __VA_OPT__(COMMA PROPERTIES_AGAIN PARENS (type, __VA_ARGS__))
+    #define PROPERTIES_AGAIN() PROPERTIES_HELPER
 
-#define PROPERTIES_CUSTOM_NAMES(type, ...) __VA_OPT__(EXPAND(PROPERTIES_CUSTOM_NAMES_HELPER(type, __VA_ARGS__)))
-#define PROPERTIES_CUSTOM_NAMES_HELPER(type, n, v, ...) \
-    SerializerProperty(n, &type::v) __VA_OPT__(COMMA PROPERTIES_CUSTOM_NAMES_AGAIN PARENS (type, __VA_ARGS__))
-#define PROPERTIES_CUSTOM_NAMES_AGAIN() PROPERTIES_CUSTOM_NAMES_HELPER
+    #define PROPERTIES_CUSTOM_NAMES(type, ...) __VA_OPT__(EXPAND(PROPERTIES_CUSTOM_NAMES_HELPER(type, __VA_ARGS__)))
+    #define PROPERTIES_CUSTOM_NAMES_HELPER(type, n, v, ...) \
+        SerializerProperty(n, &type::v) __VA_OPT__(COMMA PROPERTIES_CUSTOM_NAMES_AGAIN PARENS (type, __VA_ARGS__))
+    #define PROPERTIES_CUSTOM_NAMES_AGAIN() PROPERTIES_CUSTOM_NAMES_HELPER
 
-#define SERIALIZABLE(type, ...) \
-    SERIALIZABLE_BEGIN \
-    PROPERTIES(type, __VA_ARGS__) \
-    SERIALIZABLE_END
+    #define SERIALIZABLE(type, ...) \
+        SERIALIZABLE_BEGIN \
+        PROPERTIES(type, __VA_ARGS__) \
+        SERIALIZABLE_END
 
-#define SERIALIZABLE_CUSTOM_NAMES(type, ...) \
-    SERIALIZABLE_BEGIN \
-    PROPERTIES_CUSTOM_NAMES(type, __VA_ARGS__) \
-    SERIALIZABLE_END
+    #define SERIALIZABLE_CUSTOM_NAMES(type, ...) \
+        SERIALIZABLE_BEGIN \
+        PROPERTIES_CUSTOM_NAMES(type, __VA_ARGS__) \
+        SERIALIZABLE_END
 
-template<typename T, typename = int>
-struct has_serializer_properties : std::false_type {};
+    template<typename T, typename = int>
+    struct is_serializable_class : std::false_type {};
 
-template<typename T>
-struct has_serializer_properties<T, decltype((void)T::s_properties, 0)> : std::true_type {};
+    template<typename T>
+    struct is_serializable_class<T, decltype((void)T::s_properties, 0)> : std::true_type {};
 
-template<typename>
-struct is_vector : std::false_type {};
+    template<typename>
+    struct is_vector : std::false_type {};
 
-template<typename T, typename A>
-struct is_vector<std::vector<T, A>> : std::true_type {};
+    template<typename T, typename A>
+    struct is_vector<std::vector<T, A>> : std::true_type {};
 
-template<typename>
-struct is_map : std::false_type {};
+    template<typename>
+    struct is_string_key_map : std::false_type {};
 
-template<typename K, typename T, typename A>
-struct is_map<std::map<K, T, A>> : std::true_type {};
+    template<typename T, typename C, typename A>
+    struct is_string_key_map<std::map<std::string, T, C, A>> : std::true_type {};
 
-template<typename T>
-constexpr bool is_serializable_v = std::is_same_v<T, bool> ||
-    std::is_integral_v<T> || std::is_enum_v<T> ||
-    std::is_floating_point_v<T> ||
-    std::is_same_v<T, std::string> ||
-    is_vector<T>::value ||
-    is_map<std::string, T>::value ||
-    (
-        std::is_class_v<T> &&
-        has_serializer_properties<T>::value
+    template<typename T>
+    constexpr bool is_serializable_v = std::is_same_v<T, bool> ||
+        std::is_integral_v<T> || std::is_enum_v<T> ||
+        std::is_floating_point_v<T> ||
+        std::is_same_v<T, std::string> ||
+        is_vector<T>::value ||
+        is_string_key_map<T>::value ||
+        is_serializable_class<T>::value;
+
+    #define SERIALIZABLE_ASSERT(type) static_assert(is_serializable_v<type>, \
+        "The given type is not serializable. See the list of serializable types in " \
+        "utils/serializer.hpp. " \
+        "(If the compiler gives you a stack trace, the type's name should be in it. " \
+        "If it doesn't give you that, well good luck!)" \
     );
-
-#define SERIALIZABLE_ASSERT(type) static_assert(is_serializable_v<type>, \
-    "The given type is not serializable. See the list of serializable types in " \
-    "utils/serializer.hpp. " \
-    "(If the compiler gives you a stack trace, the type's name should be in it. " \
-    "If it doesn't give you that, well good luck!)" \
-);
 
     inline QJsonValue ToJson(const bool &v) {
         return QJsonValue(v);

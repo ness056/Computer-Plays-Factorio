@@ -15,23 +15,22 @@ namespace ComputerPlaysFactorio {
         WSADATA wsaData;
         int r = WSAStartup(MAKEWORD(2, 2), &wsaData);
         if (r != 0) {
-            g_error << "WSAStartup: " << r << std::endl;
+            g_log << "WSAStartup: " << r << std::endl;
             exit(1);
         }
-#elif defined(__linux__)
 #endif
     }
 
     bool FactorioInstance::IsFactorioPathValid(const std::string &path, std::string &message) {
-        static FactorioInstance instance(HEADLESS);
-        instance.m_process.start(QString::fromStdString(path), { "--version" });
+        QProcess process;
+        process.start(QString::fromStdString(path), { "--version" });
 
-        if (!instance.m_process.waitForFinished(100)) {
+        if (!process.waitForFinished(100)) {
             message = "Invalid path. You must select the Factorio binary. (Debug: Timeout)";
             return false;
         }
 
-        auto out = instance.m_process.readAllStandardOutput();
+        auto out = process.readAllStandardOutput();
 
         if (!out.startsWith("Version: ")) {
             message = "Invalid path. You must select the Factorio binary. (Debug: Wrong format)";
@@ -41,8 +40,7 @@ namespace ComputerPlaysFactorio {
             return false;
         }
 
-        instance.Stop();
-        instance.Join();
+        process.kill();
 
         return true;
     }
@@ -63,16 +61,16 @@ namespace ComputerPlaysFactorio {
         InitStatic();
         s_instances.insert(this);
 
-        FindAvailablePort();
-
         RegisterEvents();
+
+        connect(&m_process, &QProcess::readyReadStandardOutput,
+            this, &FactorioInstance::StdoutListener);
 
         connect(&m_process, &QProcess::started, [this]() {
             emit Started(*this);
         });
 
         connect(&m_process, &QProcess::finished, [this](int exitCode, QProcess::ExitStatus status) {
-            m_stdoutListenerExit = true;
             CloseRCON();
             for (auto &[id, request] : m_pendingRequests) {
                 auto res = ResponseBase{.id = id, .success = false, .error = FACTORIO_EXITED};
@@ -141,6 +139,8 @@ namespace ComputerPlaysFactorio {
             return false;
         }
 
+        FindAvailablePort();
+
         EditConfig("path", "write-data", GetInstanceTempPath().string());
         EditConfig("path", "mods", GetLuaPath().string());
         EditConfig("path", "saves", (GetDataPath() / "saves").string());
@@ -171,10 +171,6 @@ namespace ComputerPlaysFactorio {
         }
 
         m_process.start(QString::fromStdString(s_factorioPath), argv);
-
-        m_stdoutListenerExit = false;
-        m_stdoutListener = std::thread(&FactorioInstance::StdoutListener, this);
-        m_stdoutListener.detach();
         return true;
     }
 
@@ -182,91 +178,100 @@ namespace ComputerPlaysFactorio {
         std::unique_lock<std::mutex> lock(m_mutex);
         if (!Running()) return;
 
-        m_stdoutListenerExit = true;
         m_process.kill();
         CloseRCON();
     }
 
-    QJsonObject FactorioInstance::ReadJson(int count, bool &success) {
-        QJsonDocument json;
-        success = false;
-
-        char *buffer = new char[count];
-        uint64_t size = 0;
-        while (size < count && !m_stdoutListenerExit) {
-            if (!m_process.waitForReadyRead(500)) continue;
-
-            uint64_t readCount = m_process.read(buffer + size, count - size);
-            if (readCount == -1) goto returnLabel;
-
-            size += readCount;
-        }
-
-        if (m_stdoutListenerExit) goto returnLabel;
-
-        json = QJsonDocument::fromJson(QByteArray(buffer, -1));
-        if (!json.isObject()) {
-            g_error << "Data is not a json object: " << buffer << std::endl;
-            goto returnLabel;
-        }
-
-        success = true;
-returnLabel:
-        delete[] buffer;
-        return json.object();
-    }
-
-    void FactorioInstance::CheckWord(const std::string &previousWord, const std::string &word) {
+    void FactorioInstance::CheckWord(const QByteArray &previousWord, const QByteArray &word) {
         if (previousWord == "Starting" && word == "RCON") {
             StartRCON();
         }
 
-        else if (word.starts_with("response") && word.length() > 8) {
-            int count = std::stoi(word.substr(8));
+        else if (word.startsWith("response") && word.length() > 8) {
             bool success;
-            auto data = ReadJson(count, success);
+            int count = word.sliced(8).toInt(&success);
             if (!success) return;
 
-            ResponseBase rDataless;
-            FromJson(data, rDataless);
-            if (m_pendingRequests.count(rDataless.id)) {
-                m_pendingRequests[rDataless.id](data);
-                m_pendingRequests.erase(rDataless.id);
-            }
+            m_msgByteRemaining = count;
+            m_msgBuffer.reserve(count);
+            m_msgCallback = [this](const QJsonObject &data) {
+                ResponseBase rDataless;
+                FromJson(data, rDataless);
+                if (m_pendingRequests.count(rDataless.id)) {
+                    m_pendingRequests[rDataless.id](data);
+                    m_pendingRequests.erase(rDataless.id);
+                }
+            };
         }
 
-        else if (word.starts_with("event") && word.length() > 5) {
-            int count = std::stoi(word.substr(5));
+        else if (word.startsWith("event") && word.length() > 5) {
             bool success;
-            auto data = ReadJson(count, success);
+            int count = word.sliced(5).toInt(&success);
             if (!success) return;
 
-            EventBase rDataless;
-            FromJson(data, rDataless);
-            if (m_eventHandlers.contains(rDataless.name)) {
-                m_eventHandlers[rDataless.name](data);
-            } else {
-                g_warring << "No event handler named " << rDataless.name << " is registered." << std::endl;
-            }
+            m_msgByteRemaining = count;
+            m_msgBuffer.reserve(count);
+            m_msgCallback = [this](const QJsonObject &data) {
+                EventBase rDataless;
+                FromJson(data, rDataless);
+                if (m_eventHandlers.contains(rDataless.name)) {
+                    m_eventHandlers[rDataless.name](data);
+                } else {
+                    g_log << "No event handler named " << rDataless.name << " is registered." << std::endl;
+                }
+            };
         }
     }
 
-    void FactorioInstance::StdoutListener() {
-        char c;
-        std::string word, previousWord;
-        while (!m_stdoutListenerExit) {
-            if (!m_process.waitForReadyRead(500)) continue;
-            g_info << m_process.pos() << std::endl;
-            if (!m_process.getChar(&c)) continue;
-
-            if (c != ' ' && c != '\n' && c != '\r' && c != '\0') {
-                word += c;
+    QByteArray::iterator FactorioInstance::ReadJson(
+        const QByteArray::iterator start, const QByteArray::iterator end
+    ) {
+        if (m_msgByteRemaining > 0) {
+            const QByteArray bytes(start, end - start);
+            if (bytes.size() < m_msgByteRemaining) {
+                m_msgBuffer.append(bytes);
+                m_msgByteRemaining -= bytes.size();
+                return end;
             } else {
-                CheckWord(previousWord, word);
+                m_msgBuffer.append(bytes, m_msgByteRemaining);
+                auto endJson = start + m_msgByteRemaining;
 
-                previousWord = std::move(word);
-                word.clear();
+                auto json = QJsonDocument::fromJson(m_msgBuffer);
+                m_msgBuffer.clear();
+                m_msgByteRemaining = 0;
+    
+                if (!json.isObject()) {
+                    g_log << "Data is not a json object: " << m_msgBuffer << std::endl;
+                    return endJson;
+                }
+                m_msgCallback(json.object());
+                return endJson;
             }
+        }
+
+        return start;
+    }
+
+    void FactorioInstance::StdoutListener() {
+        auto bytes = m_process.readAllStandardOutput();
+        g_log << bytes.toStdString() << std::flush;
+
+        QByteArray previousWord, word;
+        auto wordBegin = bytes.begin(), wordEnd = bytes.begin();
+        const auto bytesEnd = bytes.end();
+        
+        while (wordEnd != bytesEnd) {
+            wordBegin = ReadJson(wordBegin, bytesEnd);
+
+            wordEnd = std::find_if(wordBegin, bytesEnd, [](const auto &x) {
+                return x == ' ' || x == '\n' || x == '\r' || x == '\0';
+            });
+
+            word = QByteArray(wordBegin, wordEnd - wordBegin);
+            wordBegin = wordEnd + 1;
+
+            CheckWord(previousWord, word);
+            previousWord = word;
         }
     }
 
@@ -284,7 +289,7 @@ returnLabel:
     void FactorioInstance::FindAvailablePort() {
         SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (s == INVALID_SOCKET) {
-            g_error << "socket" << std::endl;
+            g_log << "socket" << std::endl;
             exit(1);
         }
         SOCKADDR_IN addr;
@@ -293,12 +298,12 @@ returnLabel:
         addr.sin_family = AF_INET;
 
         if (bind(s, (SOCKADDR*)&addr, len) == SOCKET_ERROR) {
-            g_error << "bind" << std::endl;
+            g_log << "bind" << std::endl;
             exit(1);
         }
 
         if (getsockname(s, (SOCKADDR*)&addr, &len) == SOCKET_ERROR) {
-            g_error << "getsockname " << std::endl;
+            g_log << "getsockname " << std::endl;
             exit(1);
         }
         closesocket(s);
@@ -310,7 +315,7 @@ returnLabel:
 
         m_rconSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (m_rconSocket == INVALID_SOCKET) {
-            g_error << "socket" << std::endl;
+            g_log << "socket" << std::endl;
             exit(1);
         }
         SOCKADDR_IN server;
@@ -322,12 +327,12 @@ returnLabel:
         setsockopt(m_rconSocket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
         if (::connect(m_rconSocket, (const SOCKADDR*)&server, sizeof(server)) == -1) {
-            g_error << "connect" << std::endl;
+            g_log << "connect" << std::endl;
             exit(1);
         }
 
         if (!SendRCON("pass", RCON_AUTH)) {
-            g_error << "auth" << std::endl;
+            g_log << "auth" << std::endl;
             exit(1);
         }
 
@@ -362,7 +367,7 @@ returnLabel:
         packet[size + 3] = '\0';
 
         if (send(m_rconSocket, packet, size + 4, 0) < 0) {
-            g_error << "send packet" << std::endl;
+            g_log << "send packet" << std::endl;
             exit(1);
         }
 
