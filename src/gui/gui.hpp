@@ -16,11 +16,17 @@ namespace ComputerPlaysFactorio {
     private slots:
         void SetFactorioPath();
         void ToggleFactorio();
+        void NewProject();
+        void OpenProject();
+        void RunProject();
         void ShowCommandLine(bool checked);
         void ShowRequestSender(bool checked);
         void About();
 
     private:
+        static void Clean() noexcept;
+
+        std::filesystem::path m_projectDirectory;
         Bot m_bot;
 
         void CreateCentralWidget();
@@ -34,6 +40,9 @@ namespace ComputerPlaysFactorio {
         QMenu *m_menuFile;
         QAction *m_actSetFactorioPath;
         QAction *m_actToggleFactorio;
+        QAction *m_actNewProject;
+        QAction *m_actOpenProject;
+        QAction *m_actRunProject;
         QAction *m_actExit;
         QMenu *m_menuView;
         QMenu *m_menuViewDebug;

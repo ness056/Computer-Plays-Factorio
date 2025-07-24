@@ -4,6 +4,9 @@
 #include <type_traits>
 
 #include "task.hpp"
+#include "mapData.hpp"
+#include "../utils/logging.hpp"
+#include "../utils/luaUtils.hpp"
 
 /**
  *      Definitions:
@@ -34,14 +37,16 @@ namespace ComputerPlaysFactorio {
 
     class Bot {
     public:
-        void Test();
         Bot();
+        ~Bot();
 
         bool Start(std::string *message = nullptr);
         void Stop();
         bool Join();
         bool Running();
 
+        void Exec(std::string script, bool ignoreReturns = true);
+        void Exec(std::filesystem::path file, bool ignoreReturns = true);
         size_t InstructionCount();
 
         inline const FactorioInstance &GetFactorioInstance() const {
@@ -62,7 +67,9 @@ namespace ComputerPlaysFactorio {
         std::thread m_loopThread;
         bool m_exit;
 
+        lua_State *m_lua;
         EventManager m_eventManager;
+        MapData m_mapData;
 
         std::deque<std::unique_ptr<Task>> m_tasks;
 

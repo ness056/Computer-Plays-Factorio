@@ -1,10 +1,36 @@
 #include "bot.hpp"
 
+#include "../factorioAPI/factorioData.hpp"
+
 namespace ComputerPlaysFactorio {
 
-    void Bot::Test() {
-        MapPosition pos(0, 0);
-        m_tasks.push_back(std::make_unique<BuildBurnerCity>(&m_instance, &m_eventManager));
+    struct Sprite {
+        int x, y;
+
+        inline static int num = 0;
+
+        Sprite() : x(0), y(0) {
+            Info("Sprite constructor");
+        }
+
+        ~Sprite() {
+            Info("Sprite destructor");
+        }
+        
+        LUA_CFUNCTIONS(
+            std::make_tuple("Move", [](lua_State *L) -> int {
+                Info("Sprite Move");
+                return 0;
+            }),
+            std::make_tuple("Draw", [](lua_State *L) -> int {
+                Info("Sprite Draw");
+                return 0;
+            }),
+            std::make_tuple("__add", [](lua_State *L) -> int {
+                Info("Sprite __add");
+                return 0;
+            })
+        );
     }
 
     Bot::Bot() : m_instance(FactorioInstance::GRAPHICAL) {
@@ -12,10 +38,72 @@ namespace ComputerPlaysFactorio {
             Stop();
         });
 
-        m_eventManager.connect(&m_eventManager, &EventManager::NewInstruction, [this] {
-            std::scoped_lock lock(m_instructionMutex);
-            m_instructionCond.notify_all();
+        // This event is sent once every tick to notify the bot what entities have
+        // been created or destroyed during that tick. If the "valid" member of an
+        // entity is set to true, that entity was created, otherwise it was destroyed. 
+        m_instance.RegisterEvent<std::vector<Entity>>("UpdateEntities", [this](const Event<std::vector<Entity>> &event) {
+            for (const auto &entity : event.data) {
+                if (entity.valid) {
+                    m_mapData.AddEntity(entity);
+                } else {
+                    m_mapData.RemoveEntity(entity.name, entity.position);
+                }
+            }
         });
+
+        m_instance.RegisterEvent<MapPosition>("UpdateChunkColliders", [this](const Event<MapPosition> &event) {
+            m_mapData.ChunkGenerated(event.data);
+        });
+
+        // m_eventManager.connect(&m_eventManager, &EventManager::NewInstruction, [this] {
+        //     std::scoped_lock lock(m_instructionMutex);
+        //     m_instructionCond.notify_all();
+        // });
+
+        m_lua = luaL_newstate();
+        luaL_openlibs(m_lua);
+
+        Exec(GetLuaPath() / "serpent.lua", false);
+        lua_setglobal(m_lua, "serpent");
+
+        struct Person {
+            std::string first_name;
+            std::string last_name = "Simpson";
+            std::string town = "Springfield";
+            unsigned int age = 10;
+            std::vector<Person> children;
+        };
+
+        Person test;
+        test.children.push_back(Person{
+            .first_name = "test",
+            .last_name = "test2",
+            .town = "caca",
+            .age = 1000
+        });
+        LuaPushValue(m_lua, test);
+        lua_setglobal(m_lua, "test");
+
+        Exec(std::string(R"(
+            print(serpent)
+            print(serpent.block(test))
+        )"));
+
+        Info("Top: {}", lua_gettop(m_lua));
+        lua_getglobal(m_lua, "test");
+        Info("Top: {}", lua_gettop(m_lua));
+        Person test2 = LuaGetValue<Person>(m_lua, -1);
+        Info("Top: {}", lua_gettop(m_lua));
+        
+        Info("json: {}", rfl::json::write(test2));
+
+        lua_settop(m_lua, 0);
+
+        // m_eventManager.Openlib(m_lua);
+    }
+
+    Bot::~Bot() {
+        lua_close(m_lua);
     }
    
     bool Bot::Start(std::string *message) {
@@ -32,6 +120,34 @@ namespace ComputerPlaysFactorio {
         ClearInstructions();
         m_exit = true;
         m_instance.Stop();
+    }
+
+    void Bot::Exec(std::string script, bool ignoreReturns) {
+        auto top = lua_gettop(m_lua);
+        if (luaL_dostring(m_lua, script.c_str()) != LUA_OK) {
+            if (lua_isstring(m_lua, -1)) {
+                Warn("Exec string error: {}", lua_tostring(m_lua, -1));
+            } else {
+                Warn("Exec string error.");
+            }
+        }
+        if (ignoreReturns) lua_settop(m_lua, top);
+    }
+
+    void Bot::Exec(std::filesystem::path file, bool ignoreReturns) {
+        if (!std::filesystem::exists(file)) {
+            Warn("Bot::Exec(file): path is not a file.");
+        }
+
+        auto top = lua_gettop(m_lua);
+        if (luaL_dofile(m_lua, file.string().c_str()) != LUA_OK) {
+            if (lua_isstring(m_lua, -1)) {
+                Warn("Exec file error: {}", lua_tostring(m_lua, -1));
+            } else {
+                Warn("Exec file error.");
+            }
+        }
+        if (ignoreReturns) lua_settop(m_lua, top);
     }
 
     size_t Bot::InstructionCount() {

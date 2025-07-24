@@ -1,5 +1,7 @@
 #include "factorioAPI.hpp"
 
+#include "../utils/logging.hpp"
+
 namespace ComputerPlaysFactorio {
 
     bool FactorioInstance::s_initStatic = false;
@@ -15,8 +17,7 @@ namespace ComputerPlaysFactorio {
         WSADATA wsaData;
         int r = WSAStartup(MAKEWORD(2, 2), &wsaData);
         if (r != 0) {
-            g_log << "WSAStartup: " << r << std::endl;
-            exit(1);
+            throw RuntimeErrorFormat("WSAStartup failed: {}", r);
         }
 #endif
     }
@@ -61,8 +62,6 @@ namespace ComputerPlaysFactorio {
         InitStatic();
         s_instances.insert(this);
 
-        RegisterEvents();
-
         connect(&m_process, &QProcess::readyReadStandardOutput,
             this, &FactorioInstance::StdoutListener);
 
@@ -73,8 +72,8 @@ namespace ComputerPlaysFactorio {
         connect(&m_process, &QProcess::finished, [this](int exitCode, QProcess::ExitStatus status) {
             CloseRCON();
             for (auto &[id, request] : m_pendingRequests) {
-                auto res = ResponseBase{.id = id, .success = false, .error = FACTORIO_EXITED};
-                auto json = ToJson(res);
+                auto res = ResponseBase{.id = id, .success = false, .error = RequestError::FACTORIO_EXITED};
+                const auto json = rfl::json::write(res);
                 request(json);
             }
             m_pendingRequests.clear();
@@ -88,9 +87,6 @@ namespace ComputerPlaysFactorio {
             std::filesystem::copy(GetDataPath() / "factorioConfig.ini", 
                 GetConfigPath(), std::filesystem::copy_options::overwrite_existing);
         }
-    }
-    
-    void FactorioInstance::RegisterEvents() {
     }
 
     void FactorioInstance::EditConfig(const std::string &category, const std::string &name, const std::string &value) {
@@ -142,7 +138,7 @@ namespace ComputerPlaysFactorio {
         FindAvailablePort();
 
         EditConfig("path", "write-data", GetInstanceTempPath().string());
-        EditConfig("path", "mods", GetLuaPath().string());
+        EditConfig("path", "mods", GetModsPath().string());
         EditConfig("path", "saves", (GetDataPath() / "saves").string());
         EditConfig("other", "local-rcon-socket", "0.0.0.0:" + std::to_string(m_rconPort));
         EditConfig("other", "local-rcon-password", "pass");
@@ -194,9 +190,8 @@ namespace ComputerPlaysFactorio {
 
             m_msgByteRemaining = count;
             m_msgBuffer.reserve(count);
-            m_msgCallback = [this](const QJsonObject &data) {
-                ResponseBase rDataless;
-                FromJson(data, rDataless);
+            m_msgCallback = [this](const std::string &data) {
+                auto rDataless = rfl::json::read<ResponseBase>(data).value();
                 if (m_pendingRequests.count(rDataless.id)) {
                     m_pendingRequests[rDataless.id](data);
                     m_pendingRequests.erase(rDataless.id);
@@ -211,13 +206,12 @@ namespace ComputerPlaysFactorio {
 
             m_msgByteRemaining = count;
             m_msgBuffer.reserve(count);
-            m_msgCallback = [this](const QJsonObject &data) {
-                EventBase rDataless;
-                FromJson(data, rDataless);
+            m_msgCallback = [this](const std::string &data) {
+                auto rDataless = rfl::json::read<EventBase>(data).value();
                 if (m_eventHandlers.contains(rDataless.name)) {
                     m_eventHandlers[rDataless.name](data);
                 } else {
-                    g_log << "No event handler named " << rDataless.name << " is registered." << std::endl;
+                    Warn("No event handler named {} is registered.", rDataless.name);
                 }
             };
         }
@@ -236,15 +230,10 @@ namespace ComputerPlaysFactorio {
                 m_msgBuffer.append(bytes, m_msgByteRemaining);
                 auto endJson = start + m_msgByteRemaining;
 
-                auto json = QJsonDocument::fromJson(m_msgBuffer);
                 m_msgBuffer.clear();
                 m_msgByteRemaining = 0;
-    
-                if (!json.isObject()) {
-                    g_log << "Data is not a json object: " << m_msgBuffer << std::endl;
-                    return endJson;
-                }
-                m_msgCallback(json.object());
+
+                m_msgCallback(m_msgBuffer.toStdString());
                 return endJson;
             }
         }
@@ -254,7 +243,6 @@ namespace ComputerPlaysFactorio {
 
     void FactorioInstance::StdoutListener() {
         auto bytes = m_process.readAllStandardOutput();
-        g_log << bytes.toStdString() << std::flush;
 
         QByteArray previousWord, word;
         auto wordBegin = bytes.begin(), wordEnd = bytes.begin();
@@ -275,22 +263,17 @@ namespace ComputerPlaysFactorio {
         }
     }
 
-    void FactorioInstance::RegisterEvent(const std::string &name, EventCallbackDL callback) {
-        assert(callback);
-        m_eventHandlers[name] = [=](const QJsonObject &json) {
-            EventBase data;
-            FromJson(json, data);
-            ThreadPool::QueueJob([data, callback] {
-                callback(data);
-            });
+    void FactorioInstance::RegisterEvent(const std::string &name, const EventCallbackDL &callback) {
+        m_eventHandlers[name] = [=](const std::string &json) {
+            auto data = rfl::json::read<EventBase>(json).value();
+            callback(data);
         };
     }
 
     void FactorioInstance::FindAvailablePort() {
         SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (s == INVALID_SOCKET) {
-            g_log << "socket" << std::endl;
-            exit(1);
+            throw RuntimeErrorFormat("socket function returned INVALID_SOCKET: {}", LAST_SOCKET_ERROR);
         }
         SOCKADDR_IN addr;
         SOCKLEN len = sizeof(addr);
@@ -298,13 +281,11 @@ namespace ComputerPlaysFactorio {
         addr.sin_family = AF_INET;
 
         if (bind(s, (SOCKADDR*)&addr, len) == SOCKET_ERROR) {
-            g_log << "bind" << std::endl;
-            exit(1);
+            throw RuntimeErrorFormat("bind function returned SOCKET_ERROR: {}", LAST_SOCKET_ERROR);
         }
 
         if (getsockname(s, (SOCKADDR*)&addr, &len) == SOCKET_ERROR) {
-            g_log << "getsockname " << std::endl;
-            exit(1);
+            throw RuntimeErrorFormat("getsockname function returned SOCKET_ERROR: {}", LAST_SOCKET_ERROR);
         }
         closesocket(s);
         m_rconPort = addr.sin_port;
@@ -315,8 +296,7 @@ namespace ComputerPlaysFactorio {
 
         m_rconSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (m_rconSocket == INVALID_SOCKET) {
-            g_log << "socket" << std::endl;
-            exit(1);
+            throw RuntimeErrorFormat("socket function returned INVALID_SOCKET: {}", LAST_SOCKET_ERROR);
         }
         SOCKADDR_IN server;
         server.sin_family = AF_INET;
@@ -327,13 +307,11 @@ namespace ComputerPlaysFactorio {
         setsockopt(m_rconSocket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
         if (::connect(m_rconSocket, (const SOCKADDR*)&server, sizeof(server)) == -1) {
-            g_log << "connect" << std::endl;
-            exit(1);
+            throw RuntimeErrorFormat("connect function returned -1: {}", LAST_SOCKET_ERROR);
         }
 
         if (!SendRCON("pass", RCON_AUTH)) {
-            g_log << "auth" << std::endl;
-            exit(1);
+            throw RuntimeErrorFormat("RCON authentification failed.");
         }
 
         emit Ready(*this);
@@ -367,8 +345,7 @@ namespace ComputerPlaysFactorio {
         packet[size + 3] = '\0';
 
         if (send(m_rconSocket, packet, size + 4, 0) < 0) {
-            g_log << "send packet" << std::endl;
-            exit(1);
+            throw RuntimeErrorFormat("Failed to send RCON packet: {}", LAST_SOCKET_ERROR);
         }
 
         delete[] packet;
@@ -399,19 +376,18 @@ namespace ComputerPlaysFactorio {
     }
 
     bool FactorioInstance::RequestPrivate(const std::string &name, uint32_t *id) const {
-        RequestBase r;
+        RequestDataBase r;
         r.id = s_id++;
         r.name = name;
         if (id) *id = r.id;
-        auto json = ToJson(r);
-        return SendRCON("/request " + QJsonDocument(json).toJson(QJsonDocument::Compact).toStdString());
+        const auto json = rfl::json::write(r);
+        return SendRCON("/request " + json);
     }
 
     std::future<ResponseBase> FactorioInstance::AddResponseBase(uint32_t id) {
         auto promise = std::make_shared<std::promise<ResponseBase>>();
-        m_pendingRequests[id] = [promise](const QJsonObject &json) {
-            ResponseBase data;
-            FromJson(json, data);
+        m_pendingRequests[id] = [promise](const std::string &json) {
+            auto data = rfl::json::read<ResponseBase>(json).value();
             promise->set_value(data);
         };
         return promise->get_future();
@@ -424,41 +400,11 @@ namespace ComputerPlaysFactorio {
             promise.set_value(ResponseBase{
                 .id = id,
                 .success = false,
-                .error = FACTORIO_NOT_RUNNING
+                .error = RequestError::FACTORIO_NOT_RUNNING
             });
             return promise.get_future();
         }
 
         return AddResponseBase(id);
-    }
-
-    const PathfinderData &FactorioInstance::GetPathfinderData(RequestError *error) {
-        std::unique_lock lock(m_pullPathfinderDataMutex);
-        auto future = Request<LuaPathfinderData>("PathfinderDataUpdate");
-        future.wait();
-        auto res = future.get();
-        lock.unlock();
-
-        if (!res.success) {
-            if (error) *error = res.error;
-            return m_pathfinderData;
-        }
-
-        auto transform = [](std::unordered_set<MapPosition> &data,
-            const std::vector<LuaPathfinderData::SubData> &rawData) {
-
-            for (const auto &subdata : rawData) {
-                if (subdata.a) {
-                    if (!data.contains(subdata.p)) data.insert(subdata.p);
-                } else {
-                    if (data.contains(subdata.p)) data.erase(subdata.p);
-                }
-            }
-        };
-
-        transform(m_pathfinderData.entity, res.data.entity);
-        transform(m_pathfinderData.chunk, res.data.chunk);
-
-        return m_pathfinderData;
     }
 }

@@ -113,6 +113,7 @@ function API.InvokeEvent(name, data)
     local d = helpers.table_to_json({
         name = name,
         id = API.GetId(),
+        tick = game.tick,
         data = data
     })
 

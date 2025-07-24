@@ -5,3 +5,5 @@ require("__computer-plays-factorio__.requests.walk")
 require("__computer-plays-factorio__.requests.craft")
 require("__computer-plays-factorio__.requests.entity")
 require("__computer-plays-factorio__.requests.item")
+
+print(script.get_event_order())

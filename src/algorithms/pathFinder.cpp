@@ -1,15 +1,14 @@
 #include "pathFinder.hpp"
 
 #include <algorithm>
-#include <iostream>
 
 namespace ComputerPlaysFactorio {
     
     struct Node {
         Node(MapPosition pos_, Node *parent_ = nullptr) : pos(pos_), parent(parent_) {}
-        inline uint32_t Score() { return G + H; }
+        inline double Score() { return G + H; }
 
-        uint32_t G = 0, H = 0;
+        double G = 0, H = 0;
         MapPosition pos;
         Node *parent;
         Node *child = nullptr;
@@ -41,22 +40,22 @@ namespace ComputerPlaysFactorio {
         { -1, -1 }, { 1, 1 }, { -1, 1 }, { 1, -1 }
     };
 
-    static float SqDistance(MapPosition p1, MapPosition p2) {
+    static double SqDistance(MapPosition p1, MapPosition p2) {
         MapPosition delta = (p1 - p2).Abs();
         return delta.x * delta.x + delta.y * delta.y;
     }
 
     // Octagonal heuristic
-    static uint32_t Heuristic(MapPosition p1, MapPosition p2) {
+    static double Heuristic(MapPosition p1, MapPosition p2) {
         MapPosition delta = (p1 - p2).Abs();
-        return 10 * (delta.x + delta.y) - 6 * std::min(delta.x, delta.y);
+        return (delta.x + delta.y) - 0.6 * std::min(delta.x, delta.y);
     }
 
     std::vector<std::tuple<MapPosition, Path>> FindMultiPath(
-        const PathfinderData& data, MapPosition start, std::vector<std::tuple<MapPosition, float>> points) {
+        const PathfinderData& data, MapPosition start, std::vector<std::tuple<MapPosition, double>> points) {
 
         for (auto &point : points) {
-            auto &radius = std::get<float>(point);
+            auto &radius = std::get<double>(point);
             radius *= radius;
         }
 
@@ -86,7 +85,7 @@ namespace ComputerPlaysFactorio {
 
                 bool pointReached = false;
                 for (auto it = points.begin(); it != points.end(); it++) {
-                    if (SqDistance(current->pos, std::get<MapPosition>(*it)) < std::get<float>(*it)) {
+                    if (SqDistance(current->pos, std::get<MapPosition>(*it)) < std::get<double>(*it)) {
                         currentStartingPos = current->pos;
                         point_it = it;
                         pointReached = true;
@@ -103,7 +102,7 @@ namespace ComputerPlaysFactorio {
                         continue;
                     }
 
-                    uint totalCost = current->G + ((i < 4) ? 10 : 14);
+                    double totalCost = current->G + ((i < 4) ? 1 : 1.41421356237);
 
                     Node *successor = FindNode(openSet, newPos);
                     if (successor == nullptr) {
@@ -122,6 +121,7 @@ namespace ComputerPlaysFactorio {
             if (point_it == points.end()) break;
 
             auto &tuple = pathChain.emplace_back();
+            std::get<MapPosition>(tuple) = currentStartingPos;
             auto &path = std::get<Path>(tuple);
 
             size_t nbWaypoints = 1;
@@ -133,9 +133,7 @@ namespace ComputerPlaysFactorio {
             }
 
             path.reserve(nbWaypoints);
-            std::cout << "Point: " << std::get<MapPosition>(*point_it).ToString() << std::endl;
             while (current != nullptr) {
-                std::cout << current->pos.ToString() << std::endl;
                 path.emplace_back(current->pos);
                 current = current->child;
             }
@@ -148,8 +146,8 @@ namespace ComputerPlaysFactorio {
         return pathChain;
     }
 
-    Path FindPath(const PathfinderData &data, MapPosition start, MapPosition goal, float radius) {
-        const float SqRadius = radius * radius;
+    Path FindPath(const PathfinderData &data, MapPosition start, MapPosition goal, double radius) {
+        const double SqRadius = radius * radius;
         Node *current = nullptr;
         NodeSet openSet, closedSet;
         openSet.reserve(100);
@@ -185,7 +183,7 @@ namespace ComputerPlaysFactorio {
                     continue;
                 }
 
-                uint totalCost = current->G + ((i < 4) ? 10 : 14);
+                double totalCost = current->G + ((i < 4) ? 1 : 1.41421356237);
 
                 Node *successor = FindNode(openSet, newPos);
                 if (successor == nullptr) {

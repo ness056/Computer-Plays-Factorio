@@ -1,7 +1,6 @@
 #pragma once
 
-#include <QProcess>
-#include <QString>
+#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -13,9 +12,9 @@
 #include <set>
 #include <filesystem>
 #include <algorithm>
-#include <format>
-#include <cassert>
-#include <cstring>
+#include <future>
+#include <QProcess>
+#include <QString>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -24,6 +23,7 @@
 #include <WS2tcpip.h>
 #pragma comment(lib, "WS2_32")
 #define SOCKLEN int
+#define LAST_SOCKET_ERROR WSAGetLastError()
 #elif defined(__linux__)
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -31,6 +31,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #define SOCKLEN socklen_t
+#define LAST_SOCKET_ERROR errno
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
 #define SOCKET int
@@ -43,10 +44,7 @@
 #endif
 
 #include "types.hpp"
-#include "../utils/serializer.hpp"
-#include "../utils/thread.hpp"
-#include "../utils/utils.hpp"
-#include "../algorithms/pathFinder.hpp"
+#include "../utils/logging.hpp"
 
 /**
  *      Protocol used to communicate with Factorio:
@@ -58,7 +56,7 @@
  *   The rcon responses could be used in some situations but Factorio only allows to respond
  *   to a rcon request in the same game tick as it was received, which is really impractical.
  * 
- * - All data sent between C++ and Factorio is serialized in JSON using serializer.hpp
+ * - All data sent between C++ and Factorio is serialized in JSON.
  * 
  * - C++ can send request to Factorio using the "/request Request<DataType>" command. Factorio can
  *   respond with "response[size] Response<DataType>". The id fields in Request and Response should be the
@@ -76,14 +74,7 @@ namespace ComputerPlaysFactorio {
         RCON_RESPONSE_VALUE = 0
     };
 
-    struct RequestBase {
-        uint32_t id;
-        std::string name;
-
-        SERIALIZABLE(RequestBase, id, name)
-    };
-
-    enum RequestError {
+    enum class RequestError {
         REQUEST_NO_ERROR = 0,
         FACTORIO_NOT_RUNNING = 1,
         FACTORIO_EXITED = 2,
@@ -108,29 +99,28 @@ namespace ComputerPlaysFactorio {
         uint32_t id;
         bool success;
         RequestError error;
-
-        SERIALIZABLE(ResponseBase, id, success, error)
     };
 
     template<class T>
-    struct Response : public ResponseBase {
+    struct Response {
+        uint32_t id;
+        bool success;
+        RequestError error;
         T data;
-
-        SERIALIZABLE(Response<T>, id, success, error, data)
     };
 
     struct EventBase {
         uint32_t id;
         std::string name;
-
-        SERIALIZABLE(EventBase, id, name);
+        uint64_t tick;
     };
 
     template<class T>
-    struct Event : public EventBase {
+    struct Event {
+        uint32_t id;
+        std::string name;
+        uint64_t tick;
         T data;
-
-        SERIALIZABLE(Event, id, name, data);
     };
 
     class FactorioInstance : public QObject {
@@ -156,7 +146,6 @@ namespace ComputerPlaysFactorio {
             Stop();
             Join();
         }
-        void RegisterEvents();
 
         FactorioInstance(const FactorioInstance&)  = delete;
         FactorioInstance(const FactorioInstance&&) = delete;
@@ -187,30 +176,15 @@ namespace ComputerPlaysFactorio {
         inline auto SetGameSpeed(float ticks) { return RequestNoRes("GameSpeed", ticks); }
         inline auto PauseToggle() { return RequestNoRes("PauseToggle"); }
         inline auto Save(const std::string &name) { return RequestNoRes("Save", name); }
-        inline auto PlayerPosition() { Request<MapPosition>("PlayerPosition"); }
-
-        struct LuaPathfinderData {
-            struct SubData {
-                MapPosition p;
-                bool a;
-
-                SERIALIZABLE(SubData, p, a);
-            };
-
-            std::vector<SubData> entity;
-            std::vector<SubData> chunk;
-
-            SERIALIZABLE(LuaPathfinderData, entity, chunk);
-        };
-        const PathfinderData &GetPathfinderData(RequestError* = nullptr);
+        inline auto PlayerPosition() { return Request<MapPosition>("PlayerPosition"); }
 
         template<typename T>
         using EventCallback = std::function<void(const Event<T>&)>;
         using EventCallbackDL = std::function<void(const EventBase&)>;
 
         template<typename T>
-        void RegisterEvent(const std::string &name, EventCallback<T>);
-        void RegisterEvent(const std::string &name, EventCallbackDL);
+        void RegisterEvent(const std::string &name, const EventCallback<T>&);
+        void RegisterEvent(const std::string &name, const EventCallbackDL&);
 
         const Type instanceType;
 
@@ -224,6 +198,18 @@ namespace ComputerPlaysFactorio {
         void StdoutListener();
 
     private:
+        struct RequestDataBase {
+            uint32_t id;
+            std::string name;
+        };
+
+        template<class T>
+        struct RequestData {
+            uint32_t id;
+            std::string name;
+            T data;
+        };
+
         static void InitStatic();
         static bool s_initStatic;
 
@@ -240,13 +226,13 @@ namespace ComputerPlaysFactorio {
         QByteArray::iterator ReadJson(const QByteArray::iterator start, const QByteArray::iterator end);
         int m_msgByteRemaining = 0;
         QByteArray m_msgBuffer;
-        std::function<void(const QJsonObject&)> m_msgCallback;
+        std::function<void(const std::string&)> m_msgCallback;
 
         inline std::filesystem::path GetInstanceTempPath() { return GetTempDir() / ("data" + std::to_string(m_id)); }
         inline std::filesystem::path GetConfigPath() { return GetInstanceTempPath() / "config.ini"; }
         void EditConfig(const std::string &category, const std::string &name, const std::string &value);
 
-        std::map<uint32_t, std::function<void(const QJsonObject &data)>> m_pendingRequests;
+        std::map<uint32_t, std::function<void(const std::string &data)>> m_pendingRequests;
 
         bool RequestPrivate(const std::string &name, uint32_t *id = nullptr) const;
         template<class T>
@@ -255,7 +241,7 @@ namespace ComputerPlaysFactorio {
         std::future<Response<R>> AddResponse(uint32_t id);
         std::future<ResponseBase> AddResponseBase(uint32_t id);
 
-        std::map<std::string, std::function<void(const QJsonObject &data)>> m_eventHandlers;
+        std::map<std::string, std::function<void(const std::string &data)>> m_eventHandlers;
 
         // Find a suitable port for Factorio to use for RCON.
         // This function might not work in some *really* specific situation
@@ -268,28 +254,24 @@ namespace ComputerPlaysFactorio {
         uint16_t m_rconPort;
         bool m_rconConnected = false;
         SOCKET m_rconSocket = INVALID_SOCKET;
-
-        PathfinderData m_pathfinderData;
-        std::mutex m_pullPathfinderDataMutex;
     };
 
     template <class T>
     bool FactorioInstance::RequestPrivate(const std::string &name, const T &data, uint32_t *id) const {
-        RequestBase r;
+        RequestData<T> r;
         r.id = s_id++;
         r.name = name;
+        r.data = data;
         if (id) *id = r.id;
-        auto json = ToJson(r);
-        json["data"] = ToJson(data);
-        return SendRCON("/request " + QJsonDocument(json).toJson(QJsonDocument::Compact).toStdString());
+        const auto json = rfl::json::write(r);
+        return SendRCON("/request " + json);
     }
 
     template<class R>
     std::future<Response<R>> FactorioInstance::AddResponse(uint32_t id) {
         auto promise = std::make_shared<std::promise<Response<R>>>();
-        m_pendingRequests[id] = [promise](const QJsonObject &json) {
-            Response<R> data;
-            FromJson(json, data);
+        m_pendingRequests[id] = [promise](const std::string &json) {
+            auto data = rfl::json::read<Response<R>>(json).value();
             promise->set_value(data);
         };
         return promise->get_future();
@@ -302,7 +284,7 @@ namespace ComputerPlaysFactorio {
             Response<R> res;
             res.id = id;
             res.success = false;
-            res.error = FACTORIO_NOT_RUNNING;
+            res.error = RequestError::FACTORIO_NOT_RUNNING;
 
             std::promise<Response<R>> promise;
             promise.set_value(res);
@@ -319,7 +301,7 @@ namespace ComputerPlaysFactorio {
             Response<R> res;
             res.id = id;
             res.success = false;
-            res.error = FACTORIO_NOT_RUNNING;
+            res.error = RequestError::FACTORIO_NOT_RUNNING;
 
             std::promise<Response<R>> promise;
             promise.set_value(res);
@@ -337,7 +319,7 @@ namespace ComputerPlaysFactorio {
             promise.set_value(ResponseBase{
                 .id = id,
                 .success = false,
-                .error = FACTORIO_NOT_RUNNING
+                .error = RequestError::FACTORIO_NOT_RUNNING
             });
             return promise.get_future();
         }
@@ -346,14 +328,10 @@ namespace ComputerPlaysFactorio {
     }
 
     template<typename T>
-    void FactorioInstance::RegisterEvent(const std::string &name, EventCallback<T> callback) {
-        assert(callback);
-        m_eventHandlers[name] = [=](const QJsonObject &json) {
-            Event<T> data;
-            FromJson(json, data);
-            ThreadPool::QueueJob([data, callback] {
-                callback(data);
-            });
+    void FactorioInstance::RegisterEvent(const std::string &name, const EventCallback<T> &callback) {
+        m_eventHandlers[name] = [=](const std::string &json) {
+            auto data = rfl::json::read<Event<T>>(json).value();
+            callback(data);
         };
     }
 }

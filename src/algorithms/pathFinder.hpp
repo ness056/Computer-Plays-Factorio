@@ -1,5 +1,8 @@
 #pragma once
 
+#include <unordered_set>
+#include <tuple>
+
 #include "../factorioAPI/types.hpp"
 
 namespace ComputerPlaysFactorio {
@@ -10,7 +13,7 @@ namespace ComputerPlaysFactorio {
     };
 
     // Returns an empty path if no path were found
-    Path FindPath(const PathfinderData&, MapPosition start, MapPosition goal, float radius);
+    Path FindPath(const PathfinderData&, MapPosition start, MapPosition goal, double radius);
 
     /**
      * Finds a chain of paths that starts from start and
@@ -26,5 +29,5 @@ namespace ComputerPlaysFactorio {
      * compared to FindPath if the points are too far from each others.
      */
     std::vector<std::tuple<MapPosition, Path>> FindMultiPath(
-        const PathfinderData&, MapPosition start, std::vector<std::tuple<MapPosition, float>> points);
+        const PathfinderData&, MapPosition start, std::vector<std::tuple<MapPosition, double>> points);
 }

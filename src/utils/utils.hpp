@@ -1,16 +1,17 @@
 #pragma once
 
 #include <filesystem>
-#include <string>
-#include <sstream>
-#include <iostream>
-#include <fstream>
 #include <chrono>
 #include <iomanip>
 #include <cmath>
 #include <cstdint>
-#include <mutex>
-#include <condition_variable>
+#include <typeinfo>
+#include <QSettings>
+
+#ifdef __GNUG__
+#include <memory>
+#include <cxxabi.h>
+#endif
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -20,59 +21,79 @@
 #include <sys/file.h>
 #endif
 
-#include "serializer.hpp"
+#define HasStaticField(Class, Field) \
+    [](){ \
+        return overloaded{[]<typename T>(int) -> decltype(T::Field, void(), std::true_type()) { return {}; }, \
+                          []<typename T>(...) { return std::false_type{}; }}.operator()<Class>(0); \
+    }()
+
+#define PARENS ()
+#define COMMA ,
+
+#define EXPAND(...) EXPAND4(EXPAND4(EXPAND4(EXPAND4(__VA_ARGS__))))
+#define EXPAND4(...) EXPAND3(EXPAND3(EXPAND3(EXPAND3(__VA_ARGS__))))
+#define EXPAND3(...) EXPAND2(EXPAND2(EXPAND2(EXPAND2(__VA_ARGS__))))
+#define EXPAND2(...) EXPAND1(EXPAND1(EXPAND1(EXPAND1(__VA_ARGS__))))
+#define EXPAND1(...) __VA_ARGS__
 
 namespace ComputerPlaysFactorio {
 
+    // For some reason ReflectCpp does not have anything to get the name of a type,
+    // and I'm too lazy to change to a better reflection lib
+    template<typename T>
+    constexpr std::string TypeName() {
+        auto name = typeid(T).name();
+
+#ifdef __GNUG__
+        int status = 0;
+
+        std::unique_ptr<char, void(*)(void*)> res {
+            abi::__cxa_demangle(name, NULL, NULL, &status),
+            std::free
+        };
+
+        return (status == 0) ? res.get() : name;
+#else
+        return name;
+#endif
+    }
+
+    // https://gist.github.com/klmr/2775736#file-make_array-hpp
+    template<typename... T>
+    constexpr auto make_array(T&&... values) ->
+            std::array<
+                typename std::decay<
+                    typename std::common_type<T...>::type>::type,
+                sizeof...(T)> {
+        return {std::forward<T>(values)...};
+    }
+
+    template<typename>
+    struct is_std_array : std::false_type {};
+
+    template<typename T, size_t Size>
+    struct is_std_array<std::array<T, Size>> : std::true_type {};
+
+    template<typename>
+    struct is_vector : std::false_type {};
+
+    template<typename T, typename A>
+    struct is_vector<std::vector<T, A>> : std::true_type {};
+
+    template<typename>
+    struct is_string_key_map : std::false_type {};
+
+    template<typename T, typename C, typename A>
+    struct is_string_key_map<std::map<std::string, T, C, A>> : std::true_type {};
+
     extern const std::chrono::high_resolution_clock::time_point g_startTime;
-
-    class LoggingStream {
-    public:
-        LoggingStream();
-
-        LoggingStream &operator<<(std::ostream&(*f)(std::ostream&)) {
-            LoggingStream::s_file << f;
-            std::cout << f;
-            if (f == std::endl<char, std::char_traits<char>>) {
-                m_newLine = true;
-            }
-            return *this;
-        }
-
-        template<class T>
-        LoggingStream &operator<<(T val) {
-            if (m_newLine) {
-                auto timeElapsed = std::chrono::high_resolution_clock::now() - g_startTime;
-                double sec = timeElapsed.count() / 1e9;
-                int nbSpaces = 4 - (int)std::floor(std::log10(sec));
-
-                std::stringstream ss;
-                ss << std::string(std::max(0, nbSpaces), ' ') << std::fixed << std::setprecision(3) << sec;
-
-                LoggingStream::s_file << ss.str();
-                std::cout << ss.str();
-                m_newLine = false;
-            }
-
-            LoggingStream::s_file << val;
-            std::cout << val;
-            return *this;
-        }
-
-        static inline void CloseFile() {
-            if (s_file.is_open()) s_file.close();
-        }
-
-    private:
-        static inline std::ofstream s_file;
-        bool m_newLine = true;
-    };
-
-    extern LoggingStream g_log;
 
     std::filesystem::path GetRootPath();
     std::filesystem::path GetTempDir();
     inline std::filesystem::path GetDataPath() { return GetRootPath() / "data"; }
+    inline std::filesystem::path GetModsPath() { return GetDataPath() / "mods"; }
     inline std::filesystem::path GetLuaPath() { return GetDataPath() / "lua"; }
+    inline std::filesystem::path GetDefaultProjectDir() { return GetRootPath() / "projects"; }
+    void CreateProjectsDir();
     void ClearTempDirectory();
 }
