@@ -11,11 +11,11 @@ namespace ComputerPlaysFactorio {
         size_t InstructionCount();
 
     protected:
-        Task(FactorioInstance *instance, EventManager *eventManager) {
-            assert(eventManager && "nullptr event manager");
+        Task(FactorioInstance *instance, EventManager *eventManager,
+            MapData *mapData, std::function<void()> notifyNewInstruction) :
+        m_instance(instance), m_eventManager(eventManager),
+        m_mapData(mapData), m_notifyNewInstruction(m_notifyNewInstruction) {
             assert(instance && "nullptr instance");
-            m_eventManager = eventManager;
-            m_instance = instance;
         }
         
         void QueueInstruction(const Instruction::Handler&);
@@ -24,17 +24,20 @@ namespace ComputerPlaysFactorio {
 
         FactorioInstance *m_instance;
         EventManager *m_eventManager;
+        MapData *m_mapData;
 
         std::deque<Instruction> m_instructions;
         std::mutex m_mutex;
+        std::function<void()> m_notifyNewInstruction;
     };
 
     class BuildBurnerCity : public Task {
     public:
-        BuildBurnerCity(FactorioInstance *instance, EventManager *eventManager)
-            : Task(instance, eventManager) {
+        BuildBurnerCity(FactorioInstance *instance, EventManager *eventManager,
+            MapData *mapData, std::function<void()> notifyNewInstruction)
+            : Task(instance, eventManager, mapData, notifyNewInstruction) {
 
-            auto entitiesFuture = m_instance->Request<EntitySearchFilters, std::vector<Entity>>(
+            auto entitiesFuture = instance->Request<EntitySearchFilters, std::vector<Entity>>(
                 "FindEntitiesFiltered", EntitySearchFilters{.area = {{-100, -100}, {100, 100}}, .name = {"huge-rock"}});
             entitiesFuture.wait();
             auto entities = entitiesFuture.get();

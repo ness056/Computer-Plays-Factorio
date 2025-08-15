@@ -1,6 +1,7 @@
 #pragma once
 
 #include "event.hpp"
+#include "mapData.hpp"
 #include "../factorioAPI/factorioAPI.hpp"
 
 namespace ComputerPlaysFactorio {

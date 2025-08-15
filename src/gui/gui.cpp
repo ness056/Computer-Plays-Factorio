@@ -275,7 +275,8 @@ R"({{
     "name": "{}",
     "author": "",
     "version": "0.0.0",
-    "description": ""
+    "description": "",
+    "win-condition": "none"
 }})", name);
             projectFile.close();
 

@@ -54,8 +54,7 @@ namespace ComputerPlaysFactorio {
         }
 
     private:
-        // The calling function should lock m_instructionMutex
-        Instruction *GetInstruction();
+        Instruction *GetInstruction(); // The calling function should lock m_instructionMutex
         void PopInstruction();
         void ClearInstructions();
         void PopTask();

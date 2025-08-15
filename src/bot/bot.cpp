@@ -4,35 +4,6 @@
 
 namespace ComputerPlaysFactorio {
 
-    struct Sprite {
-        int x, y;
-
-        inline static int num = 0;
-
-        Sprite() : x(0), y(0) {
-            Info("Sprite constructor");
-        }
-
-        ~Sprite() {
-            Info("Sprite destructor");
-        }
-        
-        LUA_CFUNCTIONS(
-            std::make_tuple("Move", [](lua_State *L) -> int {
-                Info("Sprite Move");
-                return 0;
-            }),
-            std::make_tuple("Draw", [](lua_State *L) -> int {
-                Info("Sprite Draw");
-                return 0;
-            }),
-            std::make_tuple("__add", [](lua_State *L) -> int {
-                Info("Sprite __add");
-                return 0;
-            })
-        );
-    }
-
     Bot::Bot() : m_instance(FactorioInstance::GRAPHICAL) {
         m_instance.connect(&m_instance, &FactorioInstance::Terminated, [this] {
             Stop();
@@ -55,51 +26,20 @@ namespace ComputerPlaysFactorio {
             m_mapData.ChunkGenerated(event.data);
         });
 
-        // m_eventManager.connect(&m_eventManager, &EventManager::NewInstruction, [this] {
-        //     std::scoped_lock lock(m_instructionMutex);
-        //     m_instructionCond.notify_all();
-        // });
-
         m_lua = luaL_newstate();
         luaL_openlibs(m_lua);
 
         Exec(GetLuaPath() / "serpent.lua", false);
         lua_setglobal(m_lua, "serpent");
-
-        struct Person {
-            std::string first_name;
-            std::string last_name = "Simpson";
-            std::string town = "Springfield";
-            unsigned int age = 10;
-            std::vector<Person> children;
-        };
-
-        Person test;
-        test.children.push_back(Person{
-            .first_name = "test",
-            .last_name = "test2",
-            .town = "caca",
-            .age = 1000
-        });
-        LuaPushValue(m_lua, test);
-        lua_setglobal(m_lua, "test");
-
-        Exec(std::string(R"(
-            print(serpent)
-            print(serpent.block(test))
-        )"));
-
-        Info("Top: {}", lua_gettop(m_lua));
-        lua_getglobal(m_lua, "test");
-        Info("Top: {}", lua_gettop(m_lua));
-        Person test2 = LuaGetValue<Person>(m_lua, -1);
-        Info("Top: {}", lua_gettop(m_lua));
         
-        Info("json: {}", rfl::json::write(test2));
+        LuaPushLightUserData(m_lua, &m_eventManager);
+        lua_setglobal(m_lua, "event");
 
-        lua_settop(m_lua, 0);
+        LuaPushLightUserData(m_lua, &m_mapData);
+        lua_setglobal(m_lua, "map");
 
-        // m_eventManager.Openlib(m_lua);
+        LuaPushLightUserData(m_lua, this);
+        lua_setglobal(m_lua, "bot");
     }
 
     Bot::~Bot() {

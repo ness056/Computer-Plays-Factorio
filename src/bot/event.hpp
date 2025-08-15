@@ -1,13 +1,11 @@
 #pragma once
 
-#include <QObject>
 #include <lua.hpp>
 #include <map>
 
 namespace ComputerPlaysFactorio {
 
-    class EventManager : public QObject {
-        Q_OBJECT
+    class EventManager {
 
     public:
         enum BotEvent {
@@ -16,20 +14,19 @@ namespace ComputerPlaysFactorio {
             END_EVENT
         };
 
-        void SetLuaState(lua_State *L);
+        void Init(lua_State *L);
 
         template<typename T>
-        void InvokeEvent(BotEvent eventName, const T &data);
+        void InvokeEvent(lua_State* L, BotEvent eventName, const T &data);
 
     private:
         static int On(lua_State*);
 
-        lua_State *m_lua;
         int m_handlerTableIdx;
     };
 
     template<typename T>
-    void EventManager::InvokeEvent(BotEvent eventName, const T &data) {
+    void EventManager::InvokeEvent(lua_State* L, BotEvent eventName, const T &data) {
         
     }
 }

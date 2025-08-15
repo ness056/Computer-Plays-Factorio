@@ -19,28 +19,25 @@ namespace ComputerPlaysFactorio {
         return m_instructions.size();
     }
 
-    void Task::QueueInstruction(const Instruction::Handler &) {
-        // std::scoped_lock lock(m_mutex);
-        // m_instructions.emplace_back(handler);
-        // m_eventManager->NotifyNewInstruction();
+    void Task::QueueInstruction(const Instruction::Handler &handler) {
+        std::scoped_lock lock(m_mutex);
+        m_instructions.emplace_back(handler);
+        m_notifyNewInstruction();
     }
     
     void Task::QueueMineEntities(const std::vector<Entity> &entities) {
-        std::vector<std::tuple<MapPosition, float>> points;
+        std::vector<std::tuple<MapPosition, double>> points;
         for (auto &entity : entities) {
             points.emplace_back(entity.position, 5);
         }
 
-        // PathfinderData pathfinderData = m_instance->GetPathfinderData();
-        // std::ofstream test("test.json");
-        // test << QJsonDocument(ToJson(pathfinderData)).toJson(QJsonDocument::Indented).toStdString();
-        // test.close();
-        // auto paths = FindMultiPath(pathfinderData, {0, 0}, points);
+        auto pathfinderData = m_mapData->GetPathfinderData();
+        auto paths = FindMultiPath(pathfinderData, {0, 0}, points);
 
-        // QueueInstruction([paths](FactorioInstance &instance) {
-        //     for (auto &path : paths) {
-        //         instance.RequestNoRes("Walk", std::get<Path>(path)).wait();
-        //     }
-        // });
+        QueueInstruction([paths](FactorioInstance &instance) {
+            for (auto &path : paths) {
+                instance.RequestNoRes("Walk", std::get<Path>(path)).wait();
+            }
+        });
     }
 }

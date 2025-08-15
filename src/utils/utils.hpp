@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstdint>
 #include <typeinfo>
-#include <QSettings>
 
 #ifdef __GNUG__
 #include <memory>
@@ -41,8 +40,8 @@ namespace ComputerPlaysFactorio {
     // For some reason ReflectCpp does not have anything to get the name of a type,
     // and I'm too lazy to change to a better reflection lib
     template<typename T>
-    constexpr std::string TypeName() {
-        auto name = typeid(T).name();
+    std::string TypeName() {
+        const auto name = typeid(T).name();
 
 #ifdef __GNUG__
         int status = 0;
@@ -67,12 +66,6 @@ namespace ComputerPlaysFactorio {
                 sizeof...(T)> {
         return {std::forward<T>(values)...};
     }
-
-    template<typename>
-    struct is_std_array : std::false_type {};
-
-    template<typename T, size_t Size>
-    struct is_std_array<std::array<T, Size>> : std::true_type {};
 
     template<typename>
     struct is_vector : std::false_type {};
