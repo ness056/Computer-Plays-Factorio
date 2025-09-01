@@ -5,7 +5,7 @@
 namespace ComputerPlaysFactorio {
 
     Bot::Bot() : m_instance(FactorioInstance::GRAPHICAL) {
-        m_instance.connect(&m_instance, &FactorioInstance::Terminated, [this] {
+        m_instance.SetExitedCallback([this](int) {
             Stop();
         });
 
@@ -28,32 +28,35 @@ namespace ComputerPlaysFactorio {
 
         m_lua = luaL_newstate();
         luaL_openlibs(m_lua);
+        LuaCreateLightUDataMeta(m_lua);
 
         Exec(GetLuaPath() / "serpent.lua", false);
         lua_setglobal(m_lua, "serpent");
+
+        lua_pushvalue(m_lua, LUA_REGISTRYINDEX);
+        lua_setglobal(m_lua, "registry");
         
-        LuaPushLightUserData(m_lua, &m_eventManager);
+        LuaPushLightUserdata(m_lua, &m_eventManager);
         lua_setglobal(m_lua, "event");
 
-        LuaPushLightUserData(m_lua, &m_mapData);
-        lua_setglobal(m_lua, "map");
-
-        LuaPushLightUserData(m_lua, this);
+        LuaPushLightUserdata(m_lua, this);
         lua_setglobal(m_lua, "bot");
+
+        LuaPushLightUserdata(m_lua, &m_mapData);
+        lua_setglobal(m_lua, "map");
     }
 
     Bot::~Bot() {
         lua_close(m_lua);
     }
    
-    bool Bot::Start(std::string *message) {
-        if (Running()) return false;
-        if (!m_instance.Start(123, message)) return false;
+    void Bot::Start() {
+        std::string message;
+        if (Running()) return;
+        if (!m_instance.Start(123, &message)) return;
 
         m_exit = false;
-        m_loopThread = std::thread(&Bot::Loop, this);
-        m_loopThread.detach();
-        return true;
+        Loop();
     }
    
     void Bot::Stop() {
@@ -94,7 +97,7 @@ namespace ComputerPlaysFactorio {
         std::scoped_lock lock(m_instructionMutex);
         size_t sum = 0;
         for (auto &task : m_tasks) {
-            sum += task->InstructionCount();
+            sum += task.InstructionCount();
         }
         return sum;
     }
@@ -103,7 +106,7 @@ namespace ComputerPlaysFactorio {
         std::unique_lock lock(m_instructionMutex);
         while (true) {
             if (!m_tasks.empty()) {
-                auto instruction = m_tasks.front()->GetInstruction();
+                auto instruction = m_tasks.front().GetInstruction();
                 if (instruction) return instruction;
             }
     
@@ -114,12 +117,18 @@ namespace ComputerPlaysFactorio {
     void Bot::PopInstruction() {
         std::scoped_lock lock(m_instructionMutex);
         if (m_tasks.empty()) return;
-        m_tasks.front()->PopInstruction();
+        m_tasks.front().PopInstruction();
     }
 
     void Bot::ClearInstructions() {
         std::scoped_lock lock(m_instructionMutex);
         m_tasks.clear();
+    }
+
+    Task &Bot::QueueTask() {
+        std::scoped_lock lock(m_instructionMutex);
+        m_instructionCond.notify_all();
+        return m_tasks.emplace_back();
     }
 
     void Bot::PopTask() {
@@ -147,5 +156,36 @@ namespace ComputerPlaysFactorio {
             instruction->Call(m_instance);
             PopInstruction();
         }
+    }
+
+    void Bot::QueueMineEntities(Task &task, const std::vector<Entity> &entities) {
+        std::vector<std::tuple<MapPosition, double>> points;
+        for (auto &entity : entities) {
+            points.emplace_back(entity.position, 5);
+        }
+
+        auto pathfinderData = m_mapData.GetPathfinderData();
+        auto paths = FindMultiPath(pathfinderData, {0, 0}, points);
+
+        task.QueueInstruction([paths](FactorioInstance &instance) {
+            for (auto &path : paths) {
+                instance.RequestNoRes("Walk", std::get<Path>(path)).wait();
+            }
+        });
+    }
+
+    int Bot::QueueBuildBurnerCity(lua_State *L) {
+        auto parameters = LuaGetParameters<Bot*,int,int,int,int>(L);
+        Bot *bot = std::get<0>(parameters);
+
+        auto &task = bot->QueueTask();
+
+        auto entitiesFuture = bot->m_instance.Request<EntitySearchFilters, std::vector<Entity>>(
+            "FindEntitiesFiltered", EntitySearchFilters{.area = {{-100, -100}, {100, 100}}, .name = {"huge-rock"}});
+        entitiesFuture.wait();
+        auto entities = entitiesFuture.get();
+        bot->QueueMineEntities(task, entities.data);
+
+        return 0;
     }
 }

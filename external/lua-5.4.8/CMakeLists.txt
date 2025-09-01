@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(LuaLib)
+project(lua_lib)
 
 set(LUA_SOURCES
 # "src/lua.c"
@@ -67,6 +67,6 @@ set(LUA_SOURCES
 "src/lvm.c"
 )
 
-add_library(LuaLib ${LUA_SOURCES})
+add_library(lua_lib ${LUA_SOURCES})
 
-target_include_directories(LuaLib PUBLIC "${PROJECT_SOURCE_DIR}/src")
+target_include_directories(lua_lib PUBLIC "${PROJECT_SOURCE_DIR}/src")

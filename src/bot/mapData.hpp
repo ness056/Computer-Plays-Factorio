@@ -1,7 +1,9 @@
 #pragma once
 
+#define _USE_MATH_DEFINES
 #include <unordered_map>
 
+#include "../utils/luaUtils.hpp"
 #include "../algorithms/pathFinder.hpp"
 
 namespace ComputerPlaysFactorio {
@@ -40,5 +42,8 @@ namespace ComputerPlaysFactorio {
     private:
         PathfinderData m_pathfinderData;
         std::unordered_map<MapPosition, Chunk> m_chunks;
+
+        LUA_CFUNCTIONS(
+        );
     };
 }

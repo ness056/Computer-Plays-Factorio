@@ -4,33 +4,21 @@
 
 namespace ComputerPlaysFactorio {
 
-    void EventManager::Init(lua_State *L) {
-        lua_newtable(L);
-        m_handlerTableIdx = luaL_ref(L, LUA_REGISTRYINDEX);
-    }
-
     int EventManager::On(lua_State *L) {
-        auto event = (EventManager*)lua_touserdata(L, lua_upvalueindex(1));
+        auto parameters = LuaGetParameters<EventManager*, int, LuaFunction<void()>>(L);
+        auto &functions = std::get<0>(parameters)->m_functions;
 
-        auto top = lua_gettop(L);
-        if (top < 2) {
-            luaL_error(L, "EventManager::On requires 2 arguments but got %d", top);
-        } else if (lua_isnumber(L, -2)) {
-            luaL_error(L, "EventManager::On first argument should be a number but got %s", luaL_typename(L, -2));
-        } else if (lua_isfunction(L, -1)) {
-            luaL_error(L, "EventManager::On first argument should be a function but got %s", luaL_typename(L, -1));
+        auto id = (BotEvent)std::get<1>(parameters);
+        if (id < EventManager::NONE_EVENT || id >= EventManager::END_EVENT) {
+            luaL_error(L, "Event with id %d does not exist", id);
         }
 
-        auto name = (BotEvent)lua_tonumber(L, -2);
-        if (name < EventManager::NONE_EVENT || name >= EventManager::END_EVENT) {
-            luaL_error(L, "Event with name %s does not exist", name);
+        if (functions.contains(id)) {
+            functions.erase(id);
         }
 
-        lua_rawgeti(L, LUA_REGISTRYINDEX, event->m_handlerTableIdx);
-        lua_pushvalue(L, -2);
-        lua_rawseti(L, -2, name);
-
-        lua_pop(L, 3);
+        functions.emplace(id, std::get<2>(parameters));
+        functions.at(id).Register();
         return 0;
     }
 }

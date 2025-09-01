@@ -1,11 +1,13 @@
 #pragma once
 
+#define _USE_MATH_DEFINES
 #include <filesystem>
 #include <chrono>
 #include <iomanip>
 #include <cmath>
 #include <cstdint>
 #include <typeinfo>
+#include <map>
 
 #ifdef __GNUG__
 #include <memory>
@@ -57,28 +59,6 @@ namespace ComputerPlaysFactorio {
 #endif
     }
 
-    // https://gist.github.com/klmr/2775736#file-make_array-hpp
-    template<typename... T>
-    constexpr auto make_array(T&&... values) ->
-            std::array<
-                typename std::decay<
-                    typename std::common_type<T...>::type>::type,
-                sizeof...(T)> {
-        return {std::forward<T>(values)...};
-    }
-
-    template<typename>
-    struct is_vector : std::false_type {};
-
-    template<typename T, typename A>
-    struct is_vector<std::vector<T, A>> : std::true_type {};
-
-    template<typename>
-    struct is_string_key_map : std::false_type {};
-
-    template<typename T, typename C, typename A>
-    struct is_string_key_map<std::map<std::string, T, C, A>> : std::true_type {};
-
     extern const std::chrono::high_resolution_clock::time_point g_startTime;
 
     std::filesystem::path GetRootPath();
@@ -86,7 +66,6 @@ namespace ComputerPlaysFactorio {
     inline std::filesystem::path GetDataPath() { return GetRootPath() / "data"; }
     inline std::filesystem::path GetModsPath() { return GetDataPath() / "mods"; }
     inline std::filesystem::path GetLuaPath() { return GetDataPath() / "lua"; }
-    inline std::filesystem::path GetDefaultProjectDir() { return GetRootPath() / "projects"; }
-    void CreateProjectsDir();
+    inline std::filesystem::path GetConfigPath() { return GetRootPath() / "config.ini"; }
     void ClearTempDirectory();
 }

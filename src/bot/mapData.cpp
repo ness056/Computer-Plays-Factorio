@@ -1,8 +1,5 @@
 #include "mapData.hpp"
 
-#define _USE_MATH_DEFINES
-#include <cmath>
-
 #include "../factorioAPI/factorioData.hpp"
 #include "../utils/logging.hpp"
 

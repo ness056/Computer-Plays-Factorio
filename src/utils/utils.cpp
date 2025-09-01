@@ -47,13 +47,6 @@ namespace ComputerPlaysFactorio {
         return path;
     }
 
-    void CreateProjectsDir() {
-        auto path = GetDefaultProjectDir();
-        if (!std::filesystem::exists(path)) {
-            std::filesystem::create_directories(path);
-        }
-    }
-
     static void RemoveAllTempDir() {
         const auto path = GetRootPath() / "temp";
 

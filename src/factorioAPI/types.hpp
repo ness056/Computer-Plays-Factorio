@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "../../external/includeReflectcpp.hpp"
+#include "../utils/includeReflectcpp.hpp"
 
 namespace ComputerPlaysFactorio {
 

@@ -37,7 +37,7 @@
         {
             "name": "linux-debug",
             "displayName": "Linux x64 Debug",
-            "binaryDir": "${sourceDir}/build/debug",
+            "binaryDir": "${sourceDir}/build",
             "generator": "Unix Makefiles",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug"
@@ -51,7 +51,7 @@
         {
             "name": "linux-release",
             "displayName": "Linux x64 Release",
-            "binaryDir": "${sourceDir}/build/release",
+            "binaryDir": "${sourceDir}/build",
             "generator": "Unix Makefiles",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"

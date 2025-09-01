@@ -1,47 +1,34 @@
 #include "factorioAPI.hpp"
 
+#include <cstring>
+
+#include "../utils/inicpp.h"
 #include "../utils/logging.hpp"
+#include "../utils/thread.hpp"
 
 namespace ComputerPlaysFactorio {
 
-    bool FactorioInstance::s_initStatic = false;
-
     std::string FactorioInstance::s_factorioPath = "C:\\Users\\louis\\Code Projects\\Computer-Plays-Factorio\\factorio\\bin\\x64\\factorio.exe";
 
-    void FactorioInstance::InitStatic() {
-        if (s_initStatic) return;
-        s_initStatic = true;
-
-#ifdef _WIN32
-        // Init sockets
-        WSADATA wsaData;
-        int r = WSAStartup(MAKEWORD(2, 2), &wsaData);
-        if (r != 0) {
-            throw RuntimeErrorFormat("WSAStartup failed: {}", r);
-        }
-#endif
-    }
-
     bool FactorioInstance::IsFactorioPathValid(const std::string &path, std::string &message) {
-        QProcess process;
-        process.start(QString::fromStdString(path), { "--version" });
+        const std::vector<const char*> argv = {path.c_str(), "--version", nullptr};
+        FactorioInstance instance(FactorioInstance::HEADLESS);
 
-        if (!process.waitForFinished(100)) {
-            message = "Invalid path. You must select the Factorio binary. (Debug: Timeout)";
+        if (!instance.StartPrivate(argv)) {
+            message = "Invalid path. You must select the Factorio binary.";
             return false;
         }
 
-        auto out = process.readAllStandardOutput();
+        char buffer[12];
+        auto readBytes = instance.ReadStdout(buffer, 12);
 
-        if (!out.startsWith("Version: ")) {
-            message = "Invalid path. You must select the Factorio binary. (Debug: Wrong format)";
+        if (std::string(buffer, std::min(readBytes, 9)) != "Version: ") {
+            message = "Invalid path. You must select the Factorio binary.";
             return false;
-        } else if (out.length() < 12 || out[9] != '2' || out[11] != '0') {
+        } else if (buffer[9] != '2' || buffer[11] != '0') {
             message = "Wrong Factorio version. Supported versions: 2.0.x";
             return false;
         }
-
-        process.kill();
 
         return true;
     }
@@ -62,67 +49,34 @@ namespace ComputerPlaysFactorio {
         InitStatic();
         s_instances.insert(this);
 
-        connect(&m_process, &QProcess::readyReadStandardOutput,
-            this, &FactorioInstance::StdoutListener);
-
-        connect(&m_process, &QProcess::started, [this]() {
-            emit Started(*this);
-        });
-
-        connect(&m_process, &QProcess::finished, [this](int exitCode, QProcess::ExitStatus status) {
-            CloseRCON();
-            for (auto &[id, request] : m_pendingRequests) {
-                auto res = ResponseBase{.id = id, .success = false, .error = RequestError::FACTORIO_EXITED};
-                const auto json = rfl::json::write(res);
-                request(json);
-            }
-            m_pendingRequests.clear();
-
-            emit Terminated(*this, exitCode, status);
-        });
-
         std::filesystem::create_directory(GetInstanceTempPath());
 
         if (std::filesystem::exists(GetDataPath() / "factorioConfig.ini")) {
             std::filesystem::copy(GetDataPath() / "factorioConfig.ini", 
                 GetConfigPath(), std::filesystem::copy_options::overwrite_existing);
         }
+
+        ini::IniFile config;
+        config.load(GetConfigPath().string());
+
+        config["path"]["write-data"] = GetInstanceTempPath().string();
+        config["path"]["mods"] = GetModsPath().string();
+        config["path"]["saves"] = (GetDataPath() / "saves").string();
+        config["other"]["local-rcon-password"] = "pass";
+        config["other"]["check-updates"] = false;
+        config["other"]["autosave-interval"] = 0;
+        config["interface"]["show-tips-and-tricks-notifications"] = false;
+        config["interface"]["enable-recipe-notifications"] = false;
+        config["graphics"]["full-screen"] = false;
+
+        config.save(GetConfigPath().string());
     }
 
-    void FactorioInstance::EditConfig(const std::string &category, const std::string &name, const std::string &value) {
-        const auto config = GetConfigPath();
-        std::string str;
-
-        if (std::filesystem::exists(config)) {
-            std::ostringstream text;
-            std::ifstream in(config);
-    
-            text << in.rdbuf();
-            str = text.str();
-            in.close();
-        }
-
-        size_t pos = str.find(name + "=");
-        if (pos != std::string::npos && (str[pos - 1] == '\n' || str[pos - 1] == ' ' || str[pos - 1] == ';')) {
-            size_t start = str.rfind('\n', pos) + 1;
-            size_t end = str.find('\n', pos);
-            str.replace(start, end - start, name + "=" + value);
-        } else {
-            size_t cat = str.find("[" + category + "]");
-            if (cat == std::string::npos) {
-                str += "\n[" + category + "]\n" + name + "=" + value + "\n";
-            } else {
-                size_t start = str.find('\n', cat) + 1;
-                if (start == std::string::npos) {
-                    str += name + "=" + value + "\n";
-                } else {
-                    str.insert(start, name + "=" + value + "\n");
-                }
-            }
-        }
-
-        std::ofstream out(config);
-        out << str;
+    FactorioInstance::~FactorioInstance() {
+        s_instances.erase(this);
+        Stop();
+        Join();
+        Clean();
     }
 
     bool FactorioInstance::Start(uint32_t seed, std::string *message) {
@@ -137,28 +91,24 @@ namespace ComputerPlaysFactorio {
 
         FindAvailablePort();
 
-        EditConfig("path", "write-data", GetInstanceTempPath().string());
-        EditConfig("path", "mods", GetModsPath().string());
-        EditConfig("path", "saves", (GetDataPath() / "saves").string());
-        EditConfig("other", "local-rcon-socket", "0.0.0.0:" + std::to_string(m_rconPort));
-        EditConfig("other", "local-rcon-password", "pass");
-        EditConfig("other", "check-updates", "false");
-        EditConfig("other", "autosave-interval", "0");
-        EditConfig("interface", "show-tips-and-tricks-notifications", "false");
-        EditConfig("interface", "enable-recipe-notifications", "false");
-        EditConfig("graphics", "full-screen", "false");
+        ini::IniFile config;
+        config.load(GetConfigPath().string());
+
+        config["other"]["local-rcon-socket"] = "0.0.0.0:" + std::to_string(m_rconPort);
+
+        config.save(GetConfigPath().string());
         
-        QStringList argv = {
-            QString::fromStdString(s_factorioPath),
-            "--config", QString(GetConfigPath().c_str()),
-            "--map-gen-seed", QString::number(seed)
+        std::vector<const char*> argv = {
+            s_factorioPath.c_str(),
+            "--config", GetConfigPath().string().c_str(),
+            "--map-gen-seed", std::to_string(seed).c_str()
         };
 
         if (instanceType == HEADLESS) {
             argv.push_back("--start-server-load-scenario");
             argv.push_back("base/freeplay");
             argv.push_back("--rcon-port");
-            argv.push_back(QString::number(m_rconPort));
+            argv.push_back(std::to_string(m_rconPort).c_str());
             argv.push_back("--rcon-password");
             argv.push_back("pass");
         } else {
@@ -166,101 +116,97 @@ namespace ComputerPlaysFactorio {
             argv.push_back("base/freeplay");
         }
 
-        m_process.start(QString::fromStdString(s_factorioPath), argv);
+        argv.push_back(nullptr);
+
+        if (!StartPrivate(argv)) return false;
+        
+        m_outListener = std::thread(&FactorioInstance::OutListener, this);
+        m_outListener.detach();
+
         return true;
     }
 
-    void FactorioInstance::Stop() {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        if (!Running()) return;
-
-        m_process.kill();
-        CloseRCON();
-    }
-
-    void FactorioInstance::CheckWord(const QByteArray &previousWord, const QByteArray &word) {
+    void FactorioInstance::CheckWord(const std::string &previousWord, const std::string &word) {
         if (previousWord == "Starting" && word == "RCON") {
             StartRCON();
         }
 
-        else if (word.startsWith("response") && word.length() > 8) {
-            bool success;
-            int count = word.sliced(8).toInt(&success);
-            if (!success) return;
+        else if (word.starts_with("response") && word.length() > 8) {
+            int count;
+            try {
+                count = std::stoi(word.substr(8));
+            } catch (std::invalid_argument const&) {
+                return;
+            }
 
-            m_msgByteRemaining = count;
-            m_msgBuffer.reserve(count);
-            m_msgCallback = [this](const std::string &data) {
-                auto rDataless = rfl::json::read<ResponseBase>(data).value();
-                if (m_pendingRequests.count(rDataless.id)) {
-                    m_pendingRequests[rDataless.id](data);
-                    m_pendingRequests.erase(rDataless.id);
-                }
-            };
-        }
+            char *buffer = new char[count];
+            if (ReadStdout(buffer, count) < count) {
+                return;
+            }
+            std::string data = std::string(buffer, count);
 
-        else if (word.startsWith("event") && word.length() > 5) {
-            bool success;
-            int count = word.sliced(5).toInt(&success);
-            if (!success) return;
-
-            m_msgByteRemaining = count;
-            m_msgBuffer.reserve(count);
-            m_msgCallback = [this](const std::string &data) {
-                auto rDataless = rfl::json::read<EventBase>(data).value();
-                if (m_eventHandlers.contains(rDataless.name)) {
-                    m_eventHandlers[rDataless.name](data);
-                } else {
-                    Warn("No event handler named {} is registered.", rDataless.name);
-                }
-            };
-        }
-    }
-
-    QByteArray::iterator FactorioInstance::ReadJson(
-        const QByteArray::iterator start, const QByteArray::iterator end
-    ) {
-        if (m_msgByteRemaining > 0) {
-            const QByteArray bytes(start, end - start);
-            if (bytes.size() < m_msgByteRemaining) {
-                m_msgBuffer.append(bytes);
-                m_msgByteRemaining -= bytes.size();
-                return end;
-            } else {
-                m_msgBuffer.append(bytes, m_msgByteRemaining);
-                auto endJson = start + m_msgByteRemaining;
-
-                m_msgBuffer.clear();
-                m_msgByteRemaining = 0;
-
-                m_msgCallback(m_msgBuffer.toStdString());
-                return endJson;
+            auto rDataless = rfl::json::read<ResponseBase>(data).value();
+            if (m_pendingRequests.count(rDataless.id)) {
+                ThreadPool::QueueJob([f = m_pendingRequests[rDataless.id], data] {
+                    f(data);
+                });
+                m_pendingRequests.erase(rDataless.id);
             }
         }
 
-        return start;
+        else if (word.starts_with("event") && word.length() > 5) {
+            int count;
+            try {
+                count = std::stoi(word.substr(8));
+            } catch (std::invalid_argument const&) {
+                return;
+            }
+
+            char *buffer = new char[count];
+            if (ReadStdout(buffer, count) < count) {
+                return;
+            }
+            std::string data = std::string(buffer, count);
+
+            auto rDataless = rfl::json::read<EventBase>(data).value();
+            if (m_eventHandlers.contains(rDataless.name)) {
+                ThreadPool::QueueJob([f = m_eventHandlers[rDataless.name], data] {
+                    f(data);
+                });
+            } else {
+                Warn("No event handler named {} is registered.", rDataless.name);
+            }
+        }
     }
 
-    void FactorioInstance::StdoutListener() {
-        auto bytes = m_process.readAllStandardOutput();
+    void FactorioInstance::OutListener() {
+        std::string previousWord, word;
 
-        QByteArray previousWord, word;
-        auto wordBegin = bytes.begin(), wordEnd = bytes.begin();
-        const auto bytesEnd = bytes.end();
-        
-        while (wordEnd != bytesEnd) {
-            wordBegin = ReadJson(wordBegin, bytesEnd);
-
-            wordEnd = std::find_if(wordBegin, bytesEnd, [](const auto &x) {
-                return x == ' ' || x == '\n' || x == '\r' || x == '\0';
-            });
-
-            word = QByteArray(wordBegin, wordEnd - wordBegin);
-            wordBegin = wordEnd + 1;
+        while (Running()) {
+            while (true) {
+                char byte;
+                if (ReadStdout(&byte, 1)) {
+                    if (byte == ' ') break;
+                    else word += byte;
+                } else {
+                    break;
+                }
+            }
 
             CheckWord(previousWord, word);
             previousWord = word;
+            word.clear();
         }
+
+        CloseRCON();
+        for (auto &[id, request] : m_pendingRequests) {
+            auto res = ResponseBase{.id = id, .success = false, .error = RequestError::FACTORIO_EXITED};
+            const auto json = rfl::json::write(res);
+            request(json);
+        }
+        m_pendingRequests.clear();
+
+        if (m_exitedCallback) m_exitedCallback(m_exitCode);
     }
 
     void FactorioInstance::RegisterEvent(const std::string &name, const EventCallbackDL &callback) {
@@ -314,7 +260,7 @@ namespace ComputerPlaysFactorio {
             throw RuntimeErrorFormat("RCON authentification failed.");
         }
 
-        emit Ready(*this);
+        if (m_readyCallback) m_readyCallback();
         m_rconConnected = true;
     }
 
@@ -322,7 +268,7 @@ namespace ComputerPlaysFactorio {
         if (!m_rconConnected) return;
 
         closesocket(m_rconSocket);
-        emit Closed(*this);
+        if (m_closedCallback) m_closedCallback();
 
         m_rconConnected = false;
     }

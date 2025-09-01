@@ -5,6 +5,7 @@
 
 #include "task.hpp"
 #include "mapData.hpp"
+#include "event.hpp"
 #include "../utils/logging.hpp"
 #include "../utils/luaUtils.hpp"
 
@@ -35,12 +36,12 @@
 
 namespace ComputerPlaysFactorio {
 
-    class Bot {
+    class Bot : public LuaClass<"LuaBot"> {
     public:
         Bot();
         ~Bot();
 
-        bool Start(std::string *message = nullptr);
+        void Start();
         void Stop();
         bool Join();
         bool Running();
@@ -57,12 +58,18 @@ namespace ComputerPlaysFactorio {
         Instruction *GetInstruction(); // The calling function should lock m_instructionMutex
         void PopInstruction();
         void ClearInstructions();
+
+        Task &QueueTask();
         void PopTask();
-        std::mutex m_instructionMutex;
-        std::condition_variable m_instructionCond;
 
         void Loop();
 
+        void QueueMineEntities(Task &task, const std::vector<Entity> &entities);
+
+        static int QueueBuildBurnerCity(lua_State*);
+
+        std::mutex m_instructionMutex;
+        std::condition_variable m_instructionCond;
         std::thread m_loopThread;
         bool m_exit;
 
@@ -70,8 +77,12 @@ namespace ComputerPlaysFactorio {
         EventManager m_eventManager;
         MapData m_mapData;
 
-        std::deque<std::unique_ptr<Task>> m_tasks;
+        std::deque<Task> m_tasks;
 
         FactorioInstance m_instance;
+
+        LUA_CFUNCTIONS(
+            std::make_tuple("QueueBuildBurnerCity", &Bot::QueueBuildBurnerCity)
+        );
     };
 }

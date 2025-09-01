@@ -13,18 +13,21 @@
 #include <filesystem>
 #include <algorithm>
 #include <future>
-#include <QProcess>
-#include <QString>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#include <Windows.h>
 #pragma comment(lib, "WS2_32")
 #define SOCKLEN int
 #define LAST_SOCKET_ERROR WSAGetLastError()
 #elif defined(__linux__)
+#include <signal.h>
+#include <spawn.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -123,8 +126,7 @@ namespace ComputerPlaysFactorio {
         T data;
     };
 
-    class FactorioInstance : public QObject {
-        Q_OBJECT
+    class FactorioInstance {
 
     public:
         enum Type {
@@ -141,25 +143,29 @@ namespace ComputerPlaysFactorio {
 
         FactorioInstance(Type type);
         // Blocks the thread to wait for Factorio to stop !
-        inline ~FactorioInstance() {
-            s_instances.erase(this);
-            Stop();
-            Join();
-        }
+        ~FactorioInstance();
 
         FactorioInstance(const FactorioInstance&)  = delete;
-        FactorioInstance(const FactorioInstance&&) = delete;
         void operator=(const FactorioInstance&)    = delete;
-        void operator=(const FactorioInstance&&)   = delete;
 
-        // Returns true if Factorio is running
-        inline bool Running() const {
-            return m_process.state() != QProcess::ProcessState::NotRunning;
-        }
+        bool Running();
         bool Start(uint32_t seed, std::string *message = nullptr);
         void Stop();
-        inline bool Join(int ms = -1) {
-            return m_process.waitForFinished(ms);
+        bool Join(int ms = -1);
+
+        // Called when a save was loaded/created and you may start sending requests
+        inline void SetReadyCallback(const std::function<void()> &callback) {
+            m_readyCallback = callback;
+        }
+
+        // Called when a save is closed
+        inline void SetClosedCallback(const std::function<void()> &callback) {
+            m_closedCallback = callback;
+        }
+
+        // Called when Factorio process has exited
+        inline void SetExitedCallback(const std::function<void(int exitCode)> &callback) {
+            m_exitedCallback = callback;
         }
 
         bool SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND) const;
@@ -188,15 +194,6 @@ namespace ComputerPlaysFactorio {
 
         const Type instanceType;
 
-    signals:
-        void Started(FactorioInstance&);
-        void Ready(FactorioInstance&);      // Emitted after RCON connection was opened
-        void Closed(FactorioInstance&);     // Emitted after RCON connection was closed
-        void Terminated(FactorioInstance&, int exitCode, QProcess::ExitStatus);
-
-    private slots:
-        void StdoutListener();
-
     private:
         struct RequestDataBase {
             uint32_t id;
@@ -211,7 +208,11 @@ namespace ComputerPlaysFactorio {
         };
 
         static void InitStatic();
-        static bool s_initStatic;
+        static inline std::mutex s_staticMutex;
+        static inline bool s_initStatic = false;
+#ifdef _WIN32
+        static inline HANDLE s_jobObject = nullptr;
+#endif
 
         static inline std::atomic<uint32_t> s_id = 0;
         const uint32_t m_id = s_id++;
@@ -219,18 +220,37 @@ namespace ComputerPlaysFactorio {
 
         static std::string s_factorioPath;
 
-        QProcess m_process;
         std::mutex m_mutex;
+        int m_exitCode;
+#ifdef _WIN32
+        STARTUPINFOA m_startupInfo;
+        PROCESS_INFORMATION m_processInfo;
+        HANDLE m_inWrite;
+        HANDLE m_outRead;
+        HANDLE m_outEvent;
+        OVERLAPPED m_outOl;
+#else
+        pid_t m_process = INT_MAX;
+
+        int m_Write;
+        int m_Read;
+#endif
+
+        bool StartPrivate(const std::vector<const char*> &argv);
+        void Clean();
+        bool m_cleaned = true;
+
+        std::function<void()> m_readyCallback;
+        std::function<void()> m_closedCallback;
+        std::function<void(int exitCode)> m_exitedCallback;
         
-        void CheckWord(const QByteArray &previousWord, const QByteArray &word);
-        QByteArray::iterator ReadJson(const QByteArray::iterator start, const QByteArray::iterator end);
-        int m_msgByteRemaining = 0;
-        QByteArray m_msgBuffer;
-        std::function<void(const std::string&)> m_msgCallback;
+        int ReadStdout(char *buffer, int size);
+        void CheckWord(const std::string &previousWord, const std::string &word);
+        void OutListener();
+        std::thread m_outListener;
 
         inline std::filesystem::path GetInstanceTempPath() { return GetTempDir() / ("data" + std::to_string(m_id)); }
         inline std::filesystem::path GetConfigPath() { return GetInstanceTempPath() / "config.ini"; }
-        void EditConfig(const std::string &category, const std::string &name, const std::string &value);
 
         std::map<uint32_t, std::function<void(const std::string &data)>> m_pendingRequests;
 
@@ -244,8 +264,6 @@ namespace ComputerPlaysFactorio {
         std::map<std::string, std::function<void(const std::string &data)>> m_eventHandlers;
 
         // Find a suitable port for Factorio to use for RCON.
-        // This function might not work in some *really* specific situation
-        // so it should be changed for something better at some point.
         void FindAvailablePort();
         void StartRCON();
         void CloseRCON();

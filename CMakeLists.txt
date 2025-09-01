@@ -16,17 +16,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_PROFILE "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_PROFILE "${CMAKE_BINARY_DIR}/bin")
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
-
-qt_standard_project_setup()
-
-qt_add_executable(${PROJECT_NAME}
+add_executable(${PROJECT_NAME}
     src/main.cpp
-    src/gui/gui.hpp
-    src/gui/gui.cpp
     src/bot/bot.hpp
     src/bot/bot.cpp
-    src/bot/instruction.hpp
     src/bot/task.hpp
     src/bot/task.cpp
     src/bot/event.hpp
@@ -35,6 +28,8 @@ qt_add_executable(${PROJECT_NAME}
     src/bot/mapData.cpp
     src/factorioAPI/factorioAPI.hpp
     src/factorioAPI/factorioAPI.cpp
+    src/factorioAPI/factorioAPI_linux.cpp
+    src/factorioAPI/factorioAPI_windows.cpp
     src/factorioAPI/factorioData.hpp
     src/factorioAPI/types.hpp
     src/algorithms/pathFinder.hpp
@@ -46,21 +41,15 @@ qt_add_executable(${PROJECT_NAME}
     src/utils/logging.cpp
     src/utils/utils.hpp
     src/utils/utils.cpp
-
-    external/includeReflectcpp.hpp
+    src/utils/typeTraits.hpp
+    src/utils/includeReflectcpp.hpp
+    src/utils/inicpp.h
 )
 
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
-
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    # WIN32_EXECUTABLE TRUE
-    MACOSX_BUNDLE TRUE
-)
-
-set_property(TARGET computer_plays_factorio PROPERTY CXX_STANDARD 20)
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 23)
 
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX /Zc:preprocessor)
+    # target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX /Zc:preprocessor)
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
@@ -83,20 +72,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(reflectcpp)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets cpptrace::cpptrace LuaLib reflectcpp)
-
-install(TARGETS ${PROJECT_NAME}
-    BUNDLE  DESTINATION .
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-
-qt_generate_deploy_app_script(
-    TARGET ${PROJECT_NAME}
-    OUTPUT_SCRIPT deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
-)
-install(SCRIPT ${deploy_script})
+target_link_libraries(${PROJECT_NAME} PRIVATE cpptrace::cpptrace lua_lib reflectcpp)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(UNIX)
