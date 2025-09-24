@@ -4,58 +4,46 @@
 #include <type_traits>
 
 #include "task.hpp"
-#include "mapData.hpp"
-#include "event.hpp"
+#include "map-data.hpp"
 #include "../utils/logging.hpp"
-#include "../utils/luaUtils.hpp"
-
-/**
- *      Definitions:
- * 
- * - Instructions are the lowest level of abstraction for the bot to control the player.
- *   Instructions can be generated either by tasks or by the event manager.
- *   The execution of an instruction will never be interrupted (See interruption definition).
- * 
- * - Tasks are the highest level of abstraction to control the bot and are directly
- *   created by the user.
- *   The execution of a task may be interrupted (See interruption definition).
- *   When a task is interrupted or if one instruction fails, the task may need to
- *   regenerate its instruction queue. Tasks should be independent from one another,
- *   meaning if one task fails and regenerate its queue, other tasks should not be
- *   affected.
- *   For instance, one task could be: Build a burner city with 15 iron miners, 6 coppers,
- *   4 stones and 12 coals.
- * 
- * - The bot may interrupt the current task in order to execute another more important
- *   task. When the interruption is done, the bot will resume the execution of paused
- *   task and notify it that it had been interrupted. Interruptions are raised
- *   by the event manager.
- *   For instance an interruption will be raised if a biter attack is triggered
- *   or if power blacks out.
- */
 
 namespace ComputerPlaysFactorio {
 
-    class Bot : public LuaClass<"LuaBot"> {
+    class Bot {
     public:
-        Bot();
-        ~Bot();
-
-        void Start();
+        Result Start();
         void Stop();
-        bool Join();
+        void Join();
         bool Running();
 
-        void Exec(std::string script, bool ignoreReturns = true);
-        void Exec(std::filesystem::path file, bool ignoreReturns = true);
+    protected:
+        Bot();
+
         size_t InstructionCount();
 
         inline const FactorioInstance &GetFactorioInstance() const {
             return m_instance;
         }
 
+        inline const MapData &GetMapData() const {
+            return m_map_data;
+        }
+
+        // Subtasks
+
+        void BuildBlueprint(Task &task, const Blueprint &bp, const MapPosition &offset, Direction, bool mirror);
+        void MineEntities(Task &task, const std::vector<Entity> &entities);
+        bool CraftItems(Task &task, const std::vector<std::tuple<std::string, int>> &items);
+        bool CraftItemsUpTo(Task &task, const std::vector<std::tuple<std::string, int>> &items);
+
+        // Tasks
+
+        void BuildBurnerCity(int iron, int copper, int coal, int stone);
+
+        virtual void OnReady() {}
+
     private:
-        Instruction *GetInstruction(); // The calling function should lock m_instructionMutex
+        Instruction *GetInstruction(); // The calling function should lock m_instruction_mutex
         void PopInstruction();
         void ClearInstructions();
 
@@ -64,25 +52,42 @@ namespace ComputerPlaysFactorio {
 
         void Loop();
 
-        void QueueMineEntities(Task &task, const std::vector<Entity> &entities);
-
-        static int QueueBuildBurnerCity(lua_State*);
-
-        std::mutex m_instructionMutex;
-        std::condition_variable m_instructionCond;
-        std::thread m_loopThread;
+        std::mutex m_instruction_mutex;
+        std::condition_variable m_instruction_cond;
+        std::thread m_loop_thread;
         bool m_exit;
 
-        lua_State *m_lua;
-        EventManager m_eventManager;
-        MapData m_mapData;
+        MapData m_map_data;
 
         std::deque<Task> m_tasks;
 
         FactorioInstance m_instance;
 
-        LUA_CFUNCTIONS(
-            std::make_tuple("QueueBuildBurnerCity", &Bot::QueueBuildBurnerCity)
-        );
+        static inline constexpr auto s_burner_bp_str = R"(0eNp9kN0KgzAMRt8l1xGmTF37KmMMfzIJaJS2jon03dc6GGO4XSZ853whK9T9TJNhcaBX4GYUC/q8guVOqj7upBoINNSzETLJwMLSJa3hvgePwNLSA3TqcYexbhRKboGsGvpIZ/6CQOLYMb3qtmG5yjzUZIIO9xUI02gDNUpsCaYDwgI6SX3s/5Jk+O/2H6pgCrexoyFy798g3MnYLZwXmToqlZflsShOyvsn1MJsyA==)";
+        static inline Blueprint s_burner_bp;
+        // static inline constexpr auto s_test_bp_str = R"(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)";
+        static inline constexpr auto s_test_bp_str = R"(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)";
+        static inline Blueprint s_test_bp;
     };
+
+    class BotFactory {
+    public:
+        using FactoryFunction = std::function<std::unique_ptr<Bot>()>;
+
+        BotFactory() = delete;
+
+        static bool Register(const std::string &name, const FactoryFunction&);
+
+        static inline const std::map<std::string, FactoryFunction> &GetBots() {
+            return s_bot_factories;
+        }
+
+    private:
+        static inline std::map<std::string, FactoryFunction> s_bot_factories;
+    };
+
+    #define REGISTER_BOT(name, class_name) \
+        private: \
+        static inline bool __s_registered__ = ::ComputerPlaysFactorio::BotFactory::Register(name, \
+            [] { return ::std::make_unique<class_name>(); });
 }

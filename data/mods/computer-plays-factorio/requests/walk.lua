@@ -5,7 +5,7 @@ local Vector = Math2d.Vector
 
 ---@param event EventData.on_chunk_generated
 Event.OnEvent(defines.events.on_chunk_generated, function (event)
-    API.InvokeEvent("UpdateChunkColliders", event.position)
+    API.InvokeEvent("ChunkGenerated", event.position)
 
     local surface = game.get_surface(1) --[[@as LuaSurface]]
     local area = event.area
@@ -18,133 +18,196 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
            entity.name ~= "character"
         then
             table.insert(filtered_entities, {
+                type = entity.type,
                 name = entity.name,
                 position = entity.position,
-                boundingBox = entity.bounding_box,
-                collidesWithPlayer = entity.prototype.collision_mask.layers["player"] or false,
-                valid = true
+                direction = DirectionToString(entity.direction),
+                bounding_box = entity.bounding_box,
             })
         end
     end
 
-    API.InvokeEvent("UpdateEntities", filtered_entities)
+    API.InvokeEvent("AddEntities", filtered_entities)
+
+    local tiles = surface.find_tiles_filtered{area = event.area}
+    local t = {}
+    for k, tile in pairs(tiles) do
+        table.insert(t, {
+            tile.position,
+            prototypes.tile[tile.name].collision_mask.layers["player"] and "WATER" or "NORMAL"
+        })
+    end
+
+    API.InvokeEvent("SetTiles", t)
 end)
 
 ---@param entity LuaEntity
-local function UpdateEntityDataBuilt(entity)
-    API.InvokeEvent("UpdateEntities", {{
+local function EntityBuilt(entity)
+    API.InvokeEvent("AddEntities", {{
         name = entity.name,
         position = entity.position,
-        boundingBox = entity.bounding_box,
-        collidesWithPlayer = entity.prototype.collision_mask.layers["player"] or false,
-        valid = true
+        direction = entity.direction,
+        bounding_box = entity.bounding_box,
+        collides_with_player = entity.prototype.collision_mask.layers["player"] or false,
+        placeable_off_grid = entity.has_flag("placeable-off-grid")
     }})
 end
 
 ---@param event EventData.on_built_entity
 Event.OnEvent(defines.events.on_built_entity, function (event)
-    UpdateEntityDataBuilt(event.entity)
+    EntityBuilt(event.entity)
 end)
 
 ---@param event EventData.on_entity_cloned
 Event.OnEvent(defines.events.on_entity_cloned, function (event)
-    UpdateEntityDataBuilt(event.destination)
+    EntityBuilt(event.destination)
 end)
 
 ---@param event EventData.on_robot_built_entity
 Event.OnEvent(defines.events.on_robot_built_entity, function (event)
-    UpdateEntityDataBuilt(event.entity)
+    EntityBuilt(event.entity)
 end)
 
 ---@param entity LuaEntity
-local function UpdateEntityDataDestroy(entity)
-    API.InvokeEvent("UpdateEntities", {{
-        name = entity.name,
-        position = entity.position,
-        boundingBox = entity.bounding_box,
-        collidesWithPlayer = entity.prototype.collision_mask.layers["player"] or false,
-        valid = false
+local function EntityDestroyed(entity)
+    API.InvokeEvent("RemoveEntities", {{
+        entity.name,
+        entity.position
     }})
 end
 
 ---@param event EventData.on_player_mined_entity
 Event.OnEvent(defines.events.on_player_mined_entity, function (event)
-    UpdateEntityDataDestroy(event.entity)
+    EntityDestroyed(event.entity)
 end)
 
 ---@param event EventData.on_robot_mined_entity
 Event.OnEvent(defines.events.on_robot_mined_entity, function (event)
-    UpdateEntityDataDestroy(event.entity)
+    EntityDestroyed(event.entity)
 end)
 
 ---@param event EventData.on_entity_died
 Event.OnEvent(defines.events.on_entity_died, function (event)
-    UpdateEntityDataDestroy(event.entity)
+    EntityDestroyed(event.entity)
+end)
+
+---@param event EventData.script_raised_set_tiles
+Event.OnEvent(defines.events.script_raised_set_tiles, function (event)
+    local t = {}
+    for k, tile in pairs(event.tiles) do
+        table.insert(t, {
+            tile.position,
+            prototypes.tile[tile.name].collision_mask.layers["player"] and "WATER" or "NORMAL"
+        })
+    end
+
+    API.InvokeEvent("SetTiles", t)
+end)
+
+---@param pos MapPosition.0
+---@param tileProto LuaTilePrototype
+local function SetTile(pos, tileProto)
+    API.InvokeEvent("SetTiles", {
+        {
+            pos,
+            tileProto.collision_mask.layers["player"] and "WATER" or "NORMAL"
+        }
+    })
+end
+
+---@param event EventData.on_player_built_tile
+Event.OnEvent(defines.events.on_player_built_tile, function (event)
+    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tile)
+end)
+
+---@param event EventData.on_robot_built_tile
+Event.OnEvent(defines.events.on_robot_built_tile, function (event)
+    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tile)
+end)
+
+---@param event EventData.on_space_platform_built_tile
+Event.OnEvent(defines.events.on_space_platform_built_tile, function (event)
+    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tile)
+end)
+
+---@param event EventData.on_player_mined_tile
+Event.OnEvent(defines.events.on_player_mined_tile, function (event)
+    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tiles[1].old_tile)
+end)
+
+---@param event EventData.on_robot_mined_tile
+Event.OnEvent(defines.events.on_robot_mined_tile, function (event)
+    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tiles[1].old_tile)
+end)
+
+---@param event EventData.on_space_platform_mined_tile
+Event.OnEvent(defines.events.on_space_platform_mined_tile, function (event)
+    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tiles[1].old_tile)
 end)
 
 local function EvaluatePath()
     local player = game.get_player(1) --[[@as LuaPlayer]]
 
-    local walkingState = player.walking_state
-    if not storage.walkRequest then
-        walkingState.walking = false
-        player.walking_state = walkingState
+    local walking_state = player.walking_state
+    if not storage.walk_request then
+        walking_state.walking = false
+        player.walking_state = walking_state
         return
     end
 
-    local path = storage.walkRequest.data
-    local waypoint = path[storage.currentWaypoint]
-    local v = Vector.Sub(waypoint.position, player.character.position)
+    local path = storage.walk_request.data
+    local waypoint = path[storage.current_waypoint]
+    local v = Vector.Sub(waypoint, player.character.position)
 
     local speed = player.character.character_running_speed
     if Vector.SqLength(v) <= math.pow(speed, 2) then
-        storage.currentWaypoint = storage.currentWaypoint + 1
+        storage.current_waypoint = storage.current_waypoint + 1
 
-        if storage.currentWaypoint < table_size(path) then
+        if storage.current_waypoint <= table_size(path) then
             EvaluatePath()
         else
-            API.Success(storage.walkRequest)
-            storage.walkRequest = nil
-            walkingState.walking = false
-            player.walking_state = walkingState
+            API.Success(storage.walk_request)
+            storage.walk_request = nil
+            walking_state.walking = false
+            player.walking_state = walking_state
         end
 
         return
     end
 
-    local halfSpeed = speed / 2
-    if v.x > halfSpeed and v.y > halfSpeed then
-        walkingState.direction = defines.direction.southeast
+    local half_speed = speed / 2
+    if v.x > half_speed and v.y > half_speed then
+        walking_state.direction = defines.direction.southeast
 
-    elseif v.x > halfSpeed and v.y < -halfSpeed then
-        walkingState.direction = defines.direction.northeast
+    elseif v.x > half_speed and v.y < -half_speed then
+        walking_state.direction = defines.direction.northeast
 
-    elseif v.x < -halfSpeed and v.y > halfSpeed then
-        walkingState.direction = defines.direction.southwest
+    elseif v.x < -half_speed and v.y > half_speed then
+        walking_state.direction = defines.direction.southwest
 
-    elseif v.x < -halfSpeed and v.y < -halfSpeed then
-        walkingState.direction = defines.direction.northwest
+    elseif v.x < -half_speed and v.y < -half_speed then
+        walking_state.direction = defines.direction.northwest
 
-    elseif v.x > halfSpeed and math.abs(v.y) < halfSpeed then
-        walkingState.direction = defines.direction.east
+    elseif v.x > half_speed and math.abs(v.y) < half_speed then
+        walking_state.direction = defines.direction.east
 
-    elseif v.x < -halfSpeed and math.abs(v.y) < halfSpeed then
-        walkingState.direction = defines.direction.west
+    elseif v.x < -half_speed and math.abs(v.y) < half_speed then
+        walking_state.direction = defines.direction.west
 
-    elseif math.abs(v.x) < halfSpeed and v.y > halfSpeed then
-        walkingState.direction = defines.direction.south
+    elseif math.abs(v.x) < half_speed and v.y > half_speed then
+        walking_state.direction = defines.direction.south
 
     else
-        walkingState.direction = defines.direction.north
+        walking_state.direction = defines.direction.north
     end
 
-    walkingState.walking = true
-    player.walking_state = walkingState
+    walking_state.walking = true
+    player.walking_state = walking_state
 end
 
----@param request Request<PathfinderWaypoint[]>
+---@param request Request<MapPosition.0[]>
 API.AddRequestHandler("Walk", function (request)
-    if storage.walkRequest then
+    if storage.walk_request then
         API.Failed(request, RequestError.BUSY)
         return
     end
@@ -154,8 +217,8 @@ API.AddRequestHandler("Walk", function (request)
         return
     end
 
-    storage.walkRequest = request
-    storage.currentWaypoint = 1
+    storage.walk_request = request
+    storage.current_waypoint = 1
     EvaluatePath()
 end)
 

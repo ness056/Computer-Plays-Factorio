@@ -26,13 +26,17 @@ function Utils.Profile(fn, ...)
 end
 
 commands.add_command("profile_command", "Same as /c but measures the time to execute the lua command", function (c)
-    local fun, compileError = load(c.parameter, nil, "t")
+    local fun, compile_error = load(c.parameter, nil, "t")
     if fun then
         Utils.Profile(fun)
     else
-        log({"", "Compiling error: ", compileError})
-        game.print({"", "Compiling error: ", compileError})
+        log({"", "Compiling error: ", compile_error})
+        game.print({"", "Compiling error: ", compile_error})
     end
+end)
+
+commands.add_command("export_pathfinder_data", "", function (c)
+    API.InvokeEvent("ExportPathfinderData");
 end)
 
 ---@param request Request<string>

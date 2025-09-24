@@ -9,14 +9,14 @@ namespace ComputerPlaysFactorio {
     static std::ofstream s_file;
 
     void CreateLogFile() {
-        std::filesystem::path logFilePath = GetRootPath() / "current.log";
-        if (std::filesystem::exists(logFilePath)) {
-            std::filesystem::rename(logFilePath, logFilePath.parent_path() / "old.log");
+        std::filesystem::path log_file_path = GetRootPath() / "current.log";
+        if (std::filesystem::exists(log_file_path)) {
+            std::filesystem::rename(log_file_path, log_file_path.parent_path() / "old.log");
         }
 
-        s_file.open(logFilePath);
+        s_file.open(log_file_path);
         if (!s_file.is_open()) {
-            throw RuntimeErrorFormat("Failed to create log file: {}", logFilePath.string());
+            throw RuntimeErrorF("Failed to create log file: {}", log_file_path.string());
         }
     }
 
@@ -30,10 +30,10 @@ namespace ComputerPlaysFactorio {
         return s_file;
     }
 
-    static LogLevel level = LOG_NORMAL;
+    static LogLevel level = LogLevel::NORMAL;
 
-    void SetLogLevel(LogLevel newLevel) {
-        level = newLevel;
+    void SetLogLevel(LogLevel new_level) {
+        level = new_level;
     }
 
     LogLevel GetLogLevel() {

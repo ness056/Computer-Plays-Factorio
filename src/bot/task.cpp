@@ -22,5 +22,6 @@ namespace ComputerPlaysFactorio {
     void Task::QueueInstruction(const Instruction::Handler &handler) {
         std::scoped_lock lock(m_mutex);
         m_instructions.emplace_back(handler);
+        m_instruction_cond.notify_all();
     }
 }

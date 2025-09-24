@@ -11,28 +11,28 @@
 
 namespace ComputerPlaysFactorio {
 
-    enum LogLevel {
-        LOG_NORMAL,
-        LOG_DEBUG
+    enum class LogLevel {
+        NORMAL,
+        DEBUG
     };
 
     void CreateLogFile();
     void CloseLogFile();
     std::ofstream &GetLogFile();
 
-    void SetLogLevel(LogLevel newLevel);
+    void SetLogLevel(LogLevel new_level);
     LogLevel GetLogLevel();
 
     template<typename... Types>
     void LogMessage(std::ostream &out, const std::string& level,
         const std::format_string<Types...> format, Types&&... args
     ) {
-        auto timeElapsed = std::chrono::high_resolution_clock::now() - g_startTime;
-        double sec = timeElapsed.count() / 1e9;
-        int nbSpaces = 4 - (int)std::floor(std::log10(sec));
+        auto time_elapsed = std::chrono::high_resolution_clock::now() - g_start_time;
+        double sec = time_elapsed.count() / 1e9;
+        int nb_spaces = 4 - (int)std::floor(std::log10(std::max(1., sec)));
 
         std::stringstream msg;
-        msg << std::string(std::max(0, nbSpaces), ' ') << std::fixed << std::setprecision(3) << sec;
+        msg << std::string(std::max(0, nb_spaces), ' ') << std::fixed << std::setprecision(3) << sec;
         
         msg << " [" << level << "] " << std::format(format, std::forward<Types>(args)...);
 
@@ -59,8 +59,14 @@ namespace ComputerPlaysFactorio {
     }
 
     template<typename... Types>
+    void ErrorAndExit(const std::format_string<Types...> format, Types&&... args) {
+        Error(format, std::forward<Types>(args)...);
+        exit(1);
+    }
+
+    template<typename... Types>
     void Debug(const std::format_string<Types...> format, Types&&... args) {
-        if (GetLogLevel() == LOG_DEBUG) {
+        if (GetLogLevel() == LogLevel::DEBUG) {
             LogMessage(std::cout, "DEBUG", format, std::forward<Types>(args)...);
         }
     }
@@ -68,9 +74,12 @@ namespace ComputerPlaysFactorio {
     void ShowStacktrace(std::ostream &out = std::cerr);
 
     template<typename... Types>
-    inline std::runtime_error RuntimeErrorFormat(
+    inline std::runtime_error RuntimeErrorF(
         const std::format_string<Types...> format, Types&&... args
     ) {
         return std::runtime_error(std::format(format, std::forward<Types>(args)...));
     }
+
+    #define DEBUG1 Debug("{}", __LINE__);
+    #define DEBUG2(msg) Debug("{}: {}", __LINE__, msg);
 }

@@ -8,8 +8,8 @@ local Area = Math2d.Area
 ---@field entity string
 ---@field item string
 ---@field amount int
----@field playerInventory defines.inventory
----@field entityInventory defines.inventory
+---@field player_inventory defines.inventory
+---@field entity_inventory defines.inventory
 ---@field force boolean
 
 ---@param request Request<PutTakeRequestData>
@@ -41,34 +41,34 @@ Instruction.AddRangedRequest({"Put", "Take"}, function (request)
         return
     end
 
-    local fromInventory = player.get_inventory(data.playerInventory)
-    local toInventory = entity.get_inventory(data.entityInventory)
+    local from_inventory = player.get_inventory(data.player_inventory)
+    local to_inventory = entity.get_inventory(data.entity_inventory)
     if request.name == "Take" then
-        fromInventory, toInventory = toInventory, fromInventory
+        from_inventory, to_inventory = to_inventory, from_inventory
     end
 
-    if not fromInventory or not toInventory then
+    if not from_inventory or not to_inventory then
         API.Failed(request, RequestError.NO_INVENTORY_FOUND)
         return
     end
 
-    local itemCount = fromInventory.get_item_count(data.item)
+    local item_count = from_inventory.get_item_count(data.item)
     local amount = data.amount
     if amount < 0 then
-        amount = itemCount + amount
+        amount = item_count + amount
     end
 
-    if math.abs(data.amount) > itemCount then
+    if math.abs(data.amount) > item_count then
         if data.force then
-            amount = itemCount
+            amount = item_count
         else
             API.Failed(request, RequestError.NOT_ENOUGH_ITEM)
             return
         end
     end
 
-    local inserted = toInventory.insert({ name = data.item, count = amount })
-    fromInventory.remove({ name = data.item, count = inserted })
+    local inserted = to_inventory.insert({ name = data.item, count = amount })
+    from_inventory.remove({ name = data.item, count = inserted })
 
     API.Success(request, inserted)
 end, getAreaReachEntity)

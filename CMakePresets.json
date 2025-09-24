@@ -33,34 +33,6 @@
                 "lhs": "${hostSystemName}",
                 "rhs": "Windows"
             }
-        },
-        {
-            "name": "linux-debug",
-            "displayName": "Linux x64 Debug",
-            "binaryDir": "${sourceDir}/build",
-            "generator": "Unix Makefiles",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
-            },
-            "condition": {
-                "type": "equals",
-                "lhs": "${hostSystemName}",
-                "rhs": "Linux"
-            }
-        },
-        {
-            "name": "linux-release",
-            "displayName": "Linux x64 Release",
-            "binaryDir": "${sourceDir}/build",
-            "generator": "Unix Makefiles",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
-            },
-            "condition": {
-                "type": "equals",
-                "lhs": "${hostSystemName}",
-                "rhs": "Linux"
-            }
         }
     ]
 }

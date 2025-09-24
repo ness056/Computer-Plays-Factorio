@@ -63,23 +63,23 @@ local function MapPositionCheck(...)
     end
 end
 
----@param boundingBox BoundingBox
+---@param bounding_box BoundingBox
 ---@return BoundingBox
-local function FormatBoundingBox(boundingBox)
+local function FormatBoundingBox(bounding_box)
     local r = {}
 
     local pos
-    if boundingBox.left_top then
-        pos = FormatMapPosition(boundingBox.left_top)
+    if bounding_box.left_top then
+        pos = FormatMapPosition(bounding_box.left_top)
     else
-        pos = FormatMapPosition(boundingBox[1])
+        pos = FormatMapPosition(bounding_box[1])
     end
     r.left_top, r[1] = pos, pos
 
-    if boundingBox.right_bottom then
-        pos = FormatMapPosition(boundingBox.right_bottom)
+    if bounding_box.right_bottom then
+        pos = FormatMapPosition(bounding_box.right_bottom)
     else
-        pos = FormatMapPosition(boundingBox[2])
+        pos = FormatMapPosition(bounding_box[2])
     end
     r.right_bottom, r[2] = pos
 
@@ -108,32 +108,29 @@ function Vector.One()
     return { x = 1, y = 1 }
 end
 
-local directionVectors
-do
-    directionVectors = {
-        [defines.direction.north] = {  0, -1 },
-        [defines.direction.south] = {  0,  1 },
-        [defines.direction.west]  = { -1,  0 },
-        [defines.direction.east]  = {  1,  0 },
+local direction_vectors = {
+    [defines.direction.north] = {  0, -1 },
+    [defines.direction.south] = {  0,  1 },
+    [defines.direction.west]  = { -1,  0 },
+    [defines.direction.east]  = {  1,  0 },
 
-        [defines.direction.northwest] = { -1, -1 },
-        [defines.direction.northeast] = {  1, -1 },
-        [defines.direction.southwest] = { -1,  1 },
-        [defines.direction.southeast] = {  1,  1 },
+    [defines.direction.northwest] = { -1, -1 },
+    [defines.direction.northeast] = {  1, -1 },
+    [defines.direction.southwest] = { -1,  1 },
+    [defines.direction.southeast] = {  1,  1 },
 
-        [defines.direction.northnorthwest] = { -0.5, -1 },
-        [defines.direction.westnorthwest]  = { -1,   -0.5 },
-        [defines.direction.northnortheast] = {  0.5, -1 },
-        [defines.direction.eastnortheast]  = {  1,   -0.5 },
+    [defines.direction.northnorthwest] = { -0.5, -1 },
+    [defines.direction.westnorthwest]  = { -1,   -0.5 },
+    [defines.direction.northnortheast] = {  0.5, -1 },
+    [defines.direction.eastnortheast]  = {  1,   -0.5 },
 
-        [defines.direction.southsouthwest] = { -0.5,  1 },
-        [defines.direction.westsouthwest]  = { -1,    0.5 },
-        [defines.direction.southsoutheast] = {  0.5,  1 },
-        [defines.direction.eastsoutheast]  = {  1,    0.5 }
-    }
-end
+    [defines.direction.southsouthwest] = { -0.5,  1 },
+    [defines.direction.westsouthwest]  = { -1,    0.5 },
+    [defines.direction.southsoutheast] = {  0.5,  1 },
+    [defines.direction.eastsoutheast]  = {  1,    0.5 }
+}
 
-for k, vec in pairs(directionVectors) do
+for k, vec in pairs(direction_vectors) do
     FormatMapPositionOutArg(vec)
 end
 
@@ -141,7 +138,7 @@ end
 ---@param direction defines.direction
 ---@return MapPosition
 function Vector.FromDirection(direction)
-    return table.deepcopy(directionVectors[direction])
+    return table.deepcopy(direction_vectors[direction])
 end
 
 ---@param v1 MapPosition

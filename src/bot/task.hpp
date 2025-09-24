@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../factorioAPI/factorioAPI.hpp"
+#include "../factorio-API/factorio-API.hpp"
 
 namespace ComputerPlaysFactorio {
 
@@ -38,6 +38,8 @@ namespace ComputerPlaysFactorio {
 
     class Task {
     public:
+        Task(std::condition_variable &instruction_cond) : m_instruction_cond(instruction_cond) {}
+
         void QueueInstruction(const Instruction::Handler&);
         Instruction *GetInstruction();
         void PopInstruction();
@@ -46,5 +48,6 @@ namespace ComputerPlaysFactorio {
     private:
         std::deque<Instruction> m_instructions;
         std::mutex m_mutex;
+        std::condition_variable &m_instruction_cond;
     };
 }

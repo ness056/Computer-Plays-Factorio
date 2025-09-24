@@ -4,42 +4,47 @@ local Event = require("__computer-plays-factorio__.event")
 local Math2d = require("__computer-plays-factorio__.math2d")
 local Area = Math2d.Area
 
----@param request Request<{ position: MapPosition.0, item: string, direction: defines.direction }>
+---@param request Request<{ position: MapPosition.0, name: string, direction: string }>
 ---@return BoundingBox?, number?
 local function getAreaBuild(request)
-    if not prototypes.item[request.data.item] then
+    if not prototypes.item[request.data.name] then
         API.Failed(request, RequestError.ITEM_DOESNT_EXIST)
         return
     end
 
-    if not prototypes.item[request.data.item].place_result then
+    if not prototypes.item[request.data.name].place_result then
         API.Failed(request, RequestError.ITEM_NOT_BUILDABLE)
         return
     end
 
     local player = game.get_player(1) --[[@as LuaPlayer]]
-    local box = prototypes.entity[request.data.item].collision_box
+    local box = prototypes.entity[request.data.name].collision_box
     return Area.Add(box, request.data.position), player.build_distance
 end
 
----@param request Request<{ position: MapPosition.0, item: string, direction: defines.direction }>
+---@param request Request<{ position: MapPosition.0, name: string, direction: string }>
 Instruction.AddRangedRequest("Build", function (request)
     local player = game.get_player(1) --[[@as LuaPlayer]]
     local data = request.data
 
-    if player.get_item_count(data.item) == 0 then
+    if player.get_item_count(data.name) == 0 then
         API.Failed(request, RequestError.NOT_ENOUGH_ITEM)
         return
     end
 
-    if not player.can_place_entity{ name = data.item, position = data.position, direction = data.direction } then
+    if not player.can_place_entity{ name = data.name, position = data.position, direction = StringToDirection(data.direction) } then
         API.Failed(request, RequestError.NOT_ENOUGH_ROOM)
         return
     end
 
-    local entity = prototypes.item[data.item].place_result --[[@as LuaEntityPrototype]]
-    player.surface.create_entity{ name = entity, position = data.position, direction = data.direction, force = player.force }
-    player.remove_item{ name = data.item, count = 1 }
+    local entity = prototypes.item[data.name].place_result --[[@as LuaEntityPrototype]]
+    player.surface.create_entity{
+        name = entity,
+        position = data.position,
+        direction = StringToDirection(data.direction),
+        force = player.force
+    }
+    player.remove_item{ name = data.name, count = 1 }
 
     API.Success(request)
 end, getAreaBuild)
@@ -58,17 +63,17 @@ local function getAreaMine(request)
 end
 
 local function MineUpdate()
-    if not storage.mineRequest then return end
+    if not storage.mine_request then return end
 
     local player = game.get_player(1) --[[@as LuaPlayer]]
-    player.update_selected_entity(storage.mineRequest.data)
+    player.update_selected_entity(storage.mine_request.data)
 
-    player.mining_state = { mining = true, position = storage.mineRequest.data }
+    player.mining_state = { mining = true, position = storage.mine_request.data }
 end
 
 ---@param request Request<MapPosition.0>
 Instruction.AddRangedRequest("Mine", function (request)
-    storage.mineRequest = request
+    storage.mine_request = request
     MineUpdate()
 end, getAreaMine)
 
@@ -78,15 +83,15 @@ end)
 
 ---@param event EventData.on_player_mined_entity
 Event.OnEvent(defines.events.on_player_mined_entity, function (event)
-    if not storage.mineRequest then return end
+    if not storage.mine_request then return end
 
     local items = {}
     for k, v in pairs(event.buffer.get_contents()) do
         items[v.name] = v.count
     end
 
-    API.Success(storage.mineRequest, items)
-    storage.mineRequest = nil
+    API.Success(storage.mine_request, items)
+    storage.mine_request = nil
     local player = game.get_player(1) --[[@as LuaPlayer]]
     player.selected = nil
     player.mining_state = { mining = false }
@@ -131,19 +136,18 @@ API.AddRequestHandler("FindEntitiesFiltered", function (request)
     local surface = game.get_surface(1) --[[@as LuaSurface]]
     if #request.data.type == 0 then request.data.type = nil end
     if #request.data.name == 0 then request.data.name = nil end
-    log(serpent.block(request))
     local entities = surface.find_entities_filtered(request.data)
-    log(serpent.block(entities))
     local r = {}
 
     for k, entity in pairs(entities) do
         table.insert(r, {
+            type = entity.type,
             name = entity.name,
             position = entity.position,
-            boundingBox = entity.bounding_box
+            direction = DirectionToString(entity.direction),
+            bounding_box = entity.bounding_box
         })
     end
 
-    log(serpent.block(r))
     API.Success(request, r)
 end)

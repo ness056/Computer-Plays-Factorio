@@ -2,20 +2,20 @@
 local Event = {}
 
 ---@type { [defines.events]: fun(event: EventData)[] }
-local eventHandlers = {}
+local event_handlers = {}
 
 ---@type fun()[]
-local initHandlers = {}
+local init_handlers = {}
 
 ---@type { [uint]: fun(event: NthTickEventData)[] }
-local nthTickHandlers = {}
+local nth_tick_handlers = {}
 
 local function ControlStageCheck()
     if game or data then error("You can only register event handlers during the control life cycle") end
 end
 
 script.on_init(function ()
-    for k, handler in ipairs(initHandlers) do
+    for k, handler in ipairs(init_handlers) do
         handler()
     end
 end)
@@ -23,41 +23,41 @@ end)
 ---@param handler fun()
 function Event.OnInit(handler)
     ControlStageCheck()
-    table.insert(initHandlers, handler)
+    table.insert(init_handlers, handler)
 end
 
 ---@param event defines.events
 ---@param handler fun(event: EventData)
 function Event.OnEvent(event, handler)
     ControlStageCheck()
-    if eventHandlers[event] == nil then
-        eventHandlers[event] = {}
+    if event_handlers[event] == nil then
+        event_handlers[event] = {}
 
         script.on_event(event, function (e)
-            for k, handler_ in ipairs(eventHandlers[event]) do
+            for k, handler_ in ipairs(event_handlers[event]) do
                 handler_(e)
             end
         end)
     end
 
-    table.insert(eventHandlers[event], handler)
+    table.insert(event_handlers[event], handler)
 end
 
 ---@param tick uint
 ---@param handler fun(event: NthTickEventData)
 function Event.OnNthTick(tick, handler)
     ControlStageCheck()
-    if nthTickHandlers[tick] == nil then
-        nthTickHandlers[tick] = {}
+    if nth_tick_handlers[tick] == nil then
+        nth_tick_handlers[tick] = {}
 
         script.on_nth_tick(tick, function (e)
-            for k, handler_ in ipairs(nthTickHandlers[tick]) do
+            for k, handler_ in ipairs(nth_tick_handlers[tick]) do
                 handler_(e)
             end
         end)
     end
 
-    table.insert(nthTickHandlers[tick], handler)
+    table.insert(nth_tick_handlers[tick], handler)
 end
 
 return Event
