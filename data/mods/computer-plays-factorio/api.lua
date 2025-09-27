@@ -111,7 +111,6 @@ end
 ---@param prefix string
 ---@param data string
 local function SendData(prefix, data)
-    log(data)
     print(prefix .. data:len() .. " " .. data)
 end
 
@@ -143,7 +142,6 @@ function API.Failed(request, error)
 end
 
 commands.add_command("request", nil, function (data)
-    log(data.parameter)
     if data.player_index ~= nil then
         game.get_player(data.player_index).print("You cannot use this command")
         return
@@ -152,7 +150,6 @@ commands.add_command("request", nil, function (data)
     if data.parameter == nil then return end
 
     local d = helpers.json_to_table(data.parameter)
-    log(serpent.line(d))
     if type(d) ~= "table" then error("Invalid json: " .. data.parameter) end
 
     API.GetRequestHandler(d.name)({

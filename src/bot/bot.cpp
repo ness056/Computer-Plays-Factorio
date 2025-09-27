@@ -184,7 +184,6 @@ namespace ComputerPlaysFactorio {
                 }
             }
         }
-        Debug("Current pathfinder data: {}", rfl::json::write(colliders));
 
         // In order to find a path where the bot will be at least once in building range of every entities,
         // we first find a list of points where all entities are in range of at least 1 of those points.
@@ -276,7 +275,7 @@ namespace ComputerPlaysFactorio {
                 std::get<double>(*second),
                 &colliders
             );
-            // if (!path) throw;
+            if (!path) throw "TODO";
 
             if (path) paths.emplace_back(std::move(path.value()));
             else paths.emplace_back();
@@ -319,7 +318,6 @@ namespace ComputerPlaysFactorio {
                 for (auto entity : std::get<std::vector<SEntity>>(current_waypoint)) {
                     auto build_futur = instance.RequestNoRes("Build", entity);
                     build_futur.wait();
-                    DEBUG2((int)build_futur.get().error);
                 }
                 walk_futur.wait();
             }

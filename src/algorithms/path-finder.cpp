@@ -25,11 +25,6 @@ namespace ComputerPlaysFactorio {
         { -1, -1 }, { 1, 1 }, { -1, 1 }, { 1, -1 }
     };
 
-    static double SqDistance(MapPosition p1, MapPosition p2) {
-        MapPosition delta = (p1 - p2).Abs();
-        return delta.x * delta.x + delta.y * delta.y;
-    }
-
     // Octagonal heuristic
     static double Heuristic(MapPosition p1, MapPosition p2) {
         MapPosition delta = (p1 - p2).Abs();
@@ -55,7 +50,7 @@ namespace ComputerPlaysFactorio {
             current = open_queue.top();
             open_queue.pop();
 
-            if (SqDistance(current->pos, goal) <= sq_radius) break;
+            if (MapPosition::SqDistance(current->pos, goal) <= sq_radius) break;
 
             if (closed_set.contains(current->pos)) continue;
             closed_set.insert(current->pos);
@@ -68,7 +63,7 @@ namespace ComputerPlaysFactorio {
                     continue;
                 }
 
-                double new_g = current->g + ((i < 4) ? 1 : 1.41421356237);
+                double new_g = current->g + ((i < 4) ? 1 : M_SQRT2);
 
                 auto successor = std::make_shared<Node>(new_pos, current);
                 successor->g = new_g;

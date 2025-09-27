@@ -40,7 +40,7 @@ namespace ComputerPlaysFactorio {
 
         auto &collisions = m_pathfinder_entity;
         for (double x1 = std::ceil((entity.bounding_box->left_top.x - n) * 2) / 2; x1 <= x2; x1 += 0.5) {
-            for (double y1 = std::ceil((entity.bounding_box->left_top.y - n) / 2) / 2; y1 <= y2; y1 += 0.5) {
+            for (double y1 = std::ceil((entity.bounding_box->left_top.y - n) * 2) / 2; y1 <= y2; y1 += 0.5) {
                 if (!collisions.contains({x1, y1})) {
                     collisions.emplace(x1, y1);
                 }
@@ -82,7 +82,7 @@ namespace ComputerPlaysFactorio {
 
         auto &collisions = m_pathfinder_entity;
         for (double x1 = std::ceil((bounding_box.left_top.x - n) * 2) / 2; x1 <= x2; x1 += 0.5) {
-            for (double y1 = std::ceil((bounding_box.left_top.y - n) / 2) / 2; y1 <= y2; y1 += 0.5) {
+            for (double y1 = std::ceil((bounding_box.left_top.y - n) * 2) / 2; y1 <= y2; y1 += 0.5) {
                 if (collisions.contains({x1, y1}) && !chunk.Collides(bounding_box)) {
                     collisions.erase({x1, y1});
                 }
@@ -194,7 +194,7 @@ namespace ComputerPlaysFactorio {
                             m_chunks.contains(vertical_chunk));
             }
 
-            auto increment = vec.Rotate(M_PI_2).Abs().Round();
+            auto increment = (vec.Rotate(M_PI_2).Abs()).Round() / 2;
             for (;;) {
                 if (collide) {
                     if (!collisions.contains(tile)) {
@@ -211,18 +211,18 @@ namespace ComputerPlaysFactorio {
             }
         };
 
-        auto n = MapPosition(Direction::NORTH) / 2, s = MapPosition(Direction::SOUTH) / 2,
-            w = MapPosition(Direction::WEST) / 2, e = MapPosition(Direction::EAST) / 2;
+        auto n = MapPosition(Direction::NORTH), s = MapPosition(Direction::SOUTH),
+            w = MapPosition(Direction::WEST), e = MapPosition(Direction::EAST);
 
         check_chunk(n, left_top + e, right_top + w);
         check_chunk(s, left_bottom + e, right_bottom + w);
         check_chunk(w, left_top + s, left_bottom + n);
         check_chunk(e, right_top + s, right_bottom + n);
 
-        check_chunk(MapPosition(Direction::NORTH_WEST) / 2, left_top, left_top);
-        check_chunk(MapPosition(Direction::NORTH_EAST) / 2, right_top, right_top);
-        check_chunk(MapPosition(Direction::SOUTH_WEST) / 2, left_bottom, left_bottom);
-        check_chunk(MapPosition(Direction::SOUTH_EAST) / 2, right_bottom, right_bottom);
+        check_chunk(MapPosition(Direction::NORTH_WEST), left_top, left_top);
+        check_chunk(MapPosition(Direction::NORTH_EAST), right_top, right_top);
+        check_chunk(MapPosition(Direction::SOUTH_WEST), left_bottom, left_bottom);
+        check_chunk(MapPosition(Direction::SOUTH_EAST), right_bottom, right_bottom);
     }
     
     bool MapData::PathfinderCollides(const MapPosition &pos) const {
