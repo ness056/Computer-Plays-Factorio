@@ -1,16 +1,53 @@
 #include "prototypes.hpp"
 #include "types.hpp"
 
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+
 namespace ComputerPlaysFactorio {
 
-    Blueprint DecodeBlueprint(const std::string &str) {
-        struct DecodeHelper {
-            std::optional<Blueprint> blueprint;
-        };
+    void to_json(json &j, const MapPosition &pos) {
+        j["x"] = pos.x;
+        j["y"] = pos.y;
+    }
 
+    void from_json(const json &j, MapPosition &pos) {
+        if (j.contains("x")) {
+            pos.x = j.at("x").get<double>();
+        } else {
+            pos.x = j.at(0).get<double>();
+        }
+
+        if (j.contains("y")) {
+            pos.y = j.at("y").get<double>();
+        } else {
+            pos.y = j.at(1).get<double>();
+        }
+    }
+
+    void to_json(json &j, const Area &area) {
+        j["left_top"] = area.left_top;
+        j["right_bottom"] = area.right_bottom;
+    }
+    
+    void from_json(const json &j, Area &area) {
+        if (j.contains("left_top")) {
+            area.left_top = j.at("left_top").get<MapPosition>();
+        } else {
+            area.left_top = j.at(0).get<MapPosition>();
+        }
+
+        if (j.contains("right_bottom")) {
+            area.right_bottom = j.at("right_bottom").get<MapPosition>();
+        } else {
+            area.right_bottom = j.at(1).get<MapPosition>();
+        }
+    }
+
+    Blueprint DecodeBlueprint(const std::string &str) {
         auto compressed = base64_decode(str.substr(1), true);
 
-        Blueprint blueprint;
+        json blueprint_json;
         uLongf buff_size = (uLongf)compressed.size() * 2;
         while (true) {
             char *buffer = new char[buff_size];
@@ -24,19 +61,22 @@ namespace ComputerPlaysFactorio {
                 break;
 
             case Z_DATA_ERROR:
-                throw RuntimeErrorF("Invalid blueprint string.");
+                ErrorAndExit("Invalid blueprint string.");
 
             case Z_OK: {
-                auto json = std::string(buffer, buff_size_);
-                auto decode = rfl::json::read<DecodeHelper, rfl::DefaultIfMissing>(json);
-                if (!decode) {
-                    throw RuntimeErrorF("Invalid blueprint string. error: {}, string: {}", decode.error().what(), json);
+                auto j_str = std::string(buffer, buff_size_);
+                json j;
+                try {
+                    j = json::parse(j_str);
+                } catch (...) {
+                    ErrorAndExit("Invalid blueprint string");
                 }
-                auto helper = decode.value();
-                if (!helper.blueprint) {
-                    throw RuntimeErrorF("Invalid blueprint string. Make sure that it is an actual blueprint and not a book.");
+
+                if (!j.contains("blueprint")) {
+                    Debug("Blueprint json: {}", j_str);
+                    ErrorAndExit("Invalid blueprint string. Make sure that it is an actual blueprint and not a book.");
                 }
-                blueprint = helper.blueprint.value();
+                blueprint_json = std::move(j["blueprint"]);
                 goto Found;
             }
 
@@ -47,9 +87,31 @@ namespace ComputerPlaysFactorio {
 
         Found:
 
-        for (auto &e : blueprint.entities) {
-            auto &p = g_prototypes.GetEntity(e.name);
-            e.type = p["type"];
+        if (!blueprint_json.contains("entities") || !blueprint_json["entities"].is_array()) return {};
+
+        Blueprint blueprint;
+        blueprint.entities.reserve(blueprint_json["entities"].size());
+
+        for (auto &e : blueprint_json["entities"]) {
+            if (!e.contains("name") || !e.contains("position")) {
+                ErrorAndExit("Invalid blueprint string.");
+            }
+
+            auto &p = g_prototypes.GetEntity(e["name"]);
+            auto pos = e["position"].get<MapPosition>();
+
+            blueprint.entities.emplace_back(
+                p["type"],
+                e["name"].get<std::string>(),
+                pos,
+                e.contains("direction") ? e["direction"].get<Direction>() : Direction::NORTH,
+                e.contains("mirror") ? e["mirror"].get<bool>() : false,
+                true,
+                p.contains("collision_box") ? p["collision_box"].get<Area>() + pos : Area{},
+                e.contains("recipe") ? e["recipe"].get<std::string>() : "",
+                e.contains("input_priority") ? e["input_priority"].get<std::string>() : "",
+                e.contains("output_priority") ? e["output_priority"].get<std::string>() : ""
+            );
         }
 
         return blueprint;

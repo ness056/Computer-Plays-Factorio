@@ -4,7 +4,7 @@ local Event = require("__computer-plays-factorio__.event")
 local Math2d = require("__computer-plays-factorio__.math2d")
 local Area = Math2d.Area
 
----@param request Request<{ position: MapPosition.0, name: string, direction: string }>
+---@param request Request<{ position: MapPosition.0, name: string, direction: defines.direction }>
 ---@return BoundingBox?, number?
 local function getAreaBuild(request)
     if not prototypes.item[request.data.name] then
@@ -22,7 +22,7 @@ local function getAreaBuild(request)
     return Area.Add(box, request.data.position), player.build_distance
 end
 
----@param request Request<{ position: MapPosition.0, name: string, direction: string }>
+---@param request Request<{ position: MapPosition.0, name: string, direction: defines.direction, underground_type: string? }>
 Instruction.AddRangedRequest("Build", function (request)
     local player = game.get_player(1) --[[@as LuaPlayer]]
     local data = request.data
@@ -32,7 +32,7 @@ Instruction.AddRangedRequest("Build", function (request)
         return
     end
 
-    if not player.can_place_entity{ name = data.name, position = data.position, direction = StringToDirection(data.direction) } then
+    if not player.can_place_entity{ name = data.name, position = data.position, direction = data.direction } then
         API.Failed(request, RequestError.NOT_ENOUGH_ROOM)
         return
     end
@@ -41,8 +41,10 @@ Instruction.AddRangedRequest("Build", function (request)
     player.surface.create_entity{
         name = entity,
         position = data.position,
-        direction = StringToDirection(data.direction),
-        force = player.force
+        direction = data.direction,
+        force = player.force,
+        player = player,
+        type = data.underground_type ~= "" and data.underground_type or nil
     }
     player.remove_item{ name = data.name, count = 1 }
 
@@ -144,7 +146,7 @@ API.AddRequestHandler("FindEntitiesFiltered", function (request)
             type = entity.type,
             name = entity.name,
             position = entity.position,
-            direction = DirectionToString(entity.direction),
+            direction = entity.direction,
             bounding_box = entity.bounding_box
         })
     end

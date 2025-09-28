@@ -1,3 +1,5 @@
+local API = require("__computer-plays-factorio__.api")
+
 ---@class Event
 local Event = {}
 
@@ -11,12 +13,15 @@ local init_handlers = {}
 local nth_tick_handlers = {}
 
 local function ControlStageCheck()
-    if game or data then error("You can only register event handlers during the control life cycle") end
+    if game or data then API.Throw("You can only register event handlers during the control life cycle") end
 end
 
 script.on_init(function ()
     for k, handler in ipairs(init_handlers) do
-        handler()
+        local status, err = pcall(function ()
+            handler()
+        end)
+        if not status then API.Throw(tostring(err)) end
     end
 end)
 
@@ -35,7 +40,10 @@ function Event.OnEvent(event, handler)
 
         script.on_event(event, function (e)
             for k, handler_ in ipairs(event_handlers[event]) do
-                handler_(e)
+                local status, err = pcall(function ()
+                    handler_(e)
+                end)
+                if not status then API.Throw(tostring(err)) end
             end
         end)
     end
@@ -52,7 +60,10 @@ function Event.OnNthTick(tick, handler)
 
         script.on_nth_tick(tick, function (e)
             for k, handler_ in ipairs(nth_tick_handlers[tick]) do
-                handler_(e)
+                local status, err = pcall(function ()
+                    handler_(e)
+                end)
+                if not status then API.Throw(tostring(err)) end
             end
         end)
     end

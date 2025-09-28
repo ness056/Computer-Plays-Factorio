@@ -43,7 +43,6 @@ add_executable(${PROJECT_NAME}
     src/utils/logging.cpp
     src/utils/utils.hpp
     src/utils/utils.cpp
-    src/utils/include-reflectcpp.hpp
     src/utils/inicpp.h
     src/utils/base64.h
     src/utils/base64.cpp
@@ -67,14 +66,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(cpptrace)
 
 FetchContent_Declare(
-    reflectcpp
-    DOWNLOAD_EXTRACT_TIMESTAMP OFF
-    URL https://github.com/getml/reflect-cpp/archive/refs/tags/v0.19.0.tar.gz
-    FIND_PACKAGE_ARGS
-)
-FetchContent_MakeAvailable(reflectcpp)
-
-FetchContent_Declare(
     json
     DOWNLOAD_EXTRACT_TIMESTAMP OFF
     URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
@@ -90,7 +81,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(zlib)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE cpptrace::cpptrace reflectcpp nlohmann_json::nlohmann_json zlib)
+target_link_libraries(${PROJECT_NAME} PRIVATE cpptrace::cpptrace nlohmann_json::nlohmann_json zlib)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     file(TO_NATIVE_PATH "${OUTPUT_DATA_DIR}" OUTPUT_DATA_DIR_WIN)

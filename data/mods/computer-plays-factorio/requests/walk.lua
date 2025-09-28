@@ -21,7 +21,7 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
                 type = entity.type,
                 name = entity.name,
                 position = entity.position,
-                direction = DirectionToString(entity.direction),
+                direction = entity.direction,
                 bounding_box = entity.bounding_box,
             })
         end
@@ -34,7 +34,7 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
     for k, tile in pairs(tiles) do
         table.insert(t, {
             tile.position,
-            prototypes.tile[tile.name].collision_mask.layers["player"] and "WATER" or "NORMAL"
+            prototypes.tile[tile.name].collision_mask.layers["player"] and TileType.WATER or TileType.NORMAL
         })
     end
 
@@ -97,7 +97,7 @@ Event.OnEvent(defines.events.script_raised_set_tiles, function (event)
     for k, tile in pairs(event.tiles) do
         table.insert(t, {
             tile.position,
-            prototypes.tile[tile.name].collision_mask.layers["player"] and "WATER" or "NORMAL"
+            prototypes.tile[tile.name].collision_mask.layers["player"] and TileType.WATER or TileType.NORMAL
         })
     end
 
@@ -110,7 +110,7 @@ local function SetTile(pos, tileProto)
     API.InvokeEvent("SetTiles", {
         {
             pos,
-            tileProto.collision_mask.layers["player"] and "WATER" or "NORMAL"
+            tileProto.collision_mask.layers["player"] and TileType.WATER or TileType.NORMAL
         }
     })
 end

@@ -99,6 +99,11 @@ namespace ComputerPlaysFactorio {
         config["graphics"]["full-screen"] = false;
 
         config.save(GetConfigPath().string());
+
+        RegisterEvent("Throw", [](const json &j) {
+            std::cout << j["data"].get<std::string>() << std::endl;
+            throw LuaError(j["data"].get<std::string>());
+        });
     }
 
     FactorioInstance::~FactorioInstance() {
@@ -342,16 +347,29 @@ namespace ComputerPlaysFactorio {
             std::string data = std::string(buffer, count);
             delete[] buffer;
 
-            auto json = rfl::json::read<ResponseBase, rfl::DefaultIfMissing>(data);
-            if (!json) {
-                throw RuntimeErrorF("Malformed response json: {}\nstring: {}", json.error().what(), data);
+            json j;
+            try {
+                j = json::parse(data);
+            } catch (const std::exception &e) {
+                throw RuntimeErrorF("Malformed response json: {}\nstring: {}", e.what(), data);
             }
-            const auto &r_dataless = json.value();
-            if (m_pending_requests.count(r_dataless.id)) {
-                ThreadPool::QueueJob([f = m_pending_requests[r_dataless.id], data] {
-                    f(data);
+
+            if (!j.contains("id")) {
+                throw RuntimeErrorF("Malformed response json: missing id field\nstring: {}", data);
+            }
+            if (!j.contains("success")) {
+                throw RuntimeErrorF("Malformed response json: missing success field\nstring: {}", data);
+            }
+            if (!j.contains("error")) {
+                throw RuntimeErrorF("Malformed response json: missing error field\nstring: {}", data);
+            }
+            int id = j["id"].get<int>();
+
+            if (m_pending_requests.contains(id)) {
+                ThreadPool::QueueJob([id, f = m_pending_requests[id], j = std::move(j)] {
+                    f(j);
                 });
-                m_pending_requests.erase(r_dataless.id);
+                m_pending_requests.erase(id);
             }
         }
 
@@ -371,17 +389,29 @@ namespace ComputerPlaysFactorio {
             std::string data = std::string(buffer, count);
             delete[] buffer;
 
-            auto json = rfl::json::read<EventBase, rfl::DefaultIfMissing>(data);
-            if (!json) {
-                throw RuntimeErrorF("Malformed event json: {}\nstring: {}", json.error().what(), data);
+            json j;
+            try {
+                j = json::parse(data);
+            } catch (const std::exception &e) {
+                throw RuntimeErrorF("Malformed event json: {}\nstring: {}", e.what(), data);
             }
-            const auto &e_dataless = json.value();
-            if (m_event_handlers.contains(e_dataless.name)) {
-                ThreadPool::QueueJob([f = m_event_handlers[e_dataless.name], data] {
-                    f(data);
+
+            if (!j.contains("id")) {
+                throw RuntimeErrorF("Malformed event json: missing id field\nstring: {}", data);
+            }
+            if (!j.contains("name")) {
+                throw RuntimeErrorF("Malformed event json: missing name field\nstring: {}", data);
+            }
+            if (!j.contains("tick")) {
+                throw RuntimeErrorF("Malformed event json: missing tick field\nstring: {}", data);
+            }
+
+            if (m_event_handlers.contains(j["name"])) {
+                ThreadPool::QueueJob([f = m_event_handlers[j["name"]], j = std::move(j)] {
+                    f(j);
                 });
             } else {
-                Warn("No event handler named {} is registered.", e_dataless.name);
+                Warn("No event handler named {} is registered.", j["name"].get<std::string>());
             }
         }
     }
@@ -408,9 +438,12 @@ namespace ComputerPlaysFactorio {
         
         CloseRCON();
         for (auto &[id, request] : m_pending_requests) {
-            auto res = ResponseBase{.id = id, .success = false, .error = RequestError::FACTORIO_EXITED};
-            const auto json = rfl::json::write(res);
-            request(json);
+            const json cancel_json = {
+                {"id", id},
+                {"success", false},
+                {"error", RequestError::FACTORIO_EXITED}
+            };
+            request(cancel_json);
         }
         m_pending_requests.clear();
 
@@ -418,33 +451,26 @@ namespace ComputerPlaysFactorio {
         if (m_exited_callback) m_exited_callback(m_exit_code);
     }
 
-    void FactorioInstance::RegisterEvent(const std::string &name, const EventCallbackDL &callback) {
-        m_event_handlers[name] = [=](const std::string &str) {
-            auto json = rfl::json::read<EventBase, rfl::DefaultIfMissing>(str);
-            if (!json) {
-                throw RuntimeErrorF("Malformed event json: {}\nstring: {}", json.error().what(), str);
-            }
-            const auto &data = json.value();
-            callback(data);
-        };
+    void FactorioInstance::RegisterEvent(const std::string &name, std::function<void(const json&)> callback) {
+        m_event_handlers[name] = callback;
     }
 
     void FactorioInstance::FindAvailablePort() {
         SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (s == INVALID_SOCKET) {
-            throw RuntimeErrorF("socket function returned INVALID_SOCKET: {}", LAST_SOCKET_ERROR);
+            throw RuntimeErrorF("socket function returned INVALID_SOCKET: {}", WSAGetLastError());
         }
         SOCKADDR_IN addr;
-        SOCKLEN len = sizeof(addr);
+        int len = sizeof(addr);
         memset(&addr, 0, len);
         addr.sin_family = AF_INET;
 
         if (bind(s, (SOCKADDR*)&addr, len) == SOCKET_ERROR) {
-            throw RuntimeErrorF("bind function returned SOCKET_ERROR: {}", LAST_SOCKET_ERROR);
+            throw RuntimeErrorF("bind function returned SOCKET_ERROR: {}", WSAGetLastError());
         }
 
         if (getsockname(s, (SOCKADDR*)&addr, &len) == SOCKET_ERROR) {
-            throw RuntimeErrorF("getsockname function returned SOCKET_ERROR: {}", LAST_SOCKET_ERROR);
+            throw RuntimeErrorF("getsockname function returned SOCKET_ERROR: {}", WSAGetLastError());
         }
         closesocket(s);
         m_rcon_port = addr.sin_port;
@@ -455,7 +481,7 @@ namespace ComputerPlaysFactorio {
 
         m_rcon_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (m_rcon_socket == INVALID_SOCKET) {
-            throw RuntimeErrorF("socket function returned INVALID_SOCKET: {}", LAST_SOCKET_ERROR);
+            throw RuntimeErrorF("socket function returned INVALID_SOCKET: {}", WSAGetLastError());
         }
         SOCKADDR_IN server;
         server.sin_family = AF_INET;
@@ -466,7 +492,7 @@ namespace ComputerPlaysFactorio {
         setsockopt(m_rcon_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
         if (::connect(m_rcon_socket, (const SOCKADDR*)&server, sizeof(server)) == -1) {
-            throw RuntimeErrorF("connect function returned -1: {}", LAST_SOCKET_ERROR);
+            throw RuntimeErrorF("connect function returned -1: {}", WSAGetLastError());
         }
 
         if (SendRCON("pass", RCON_AUTH) == RCON_AUTH_FAILED) {
@@ -504,7 +530,7 @@ namespace ComputerPlaysFactorio {
         packet[size + 3] = '\0';
 
         if (send(m_rcon_socket, packet, size + 4, 0) < 0) {
-            throw RuntimeErrorF("Failed to send RCON packet: {}", LAST_SOCKET_ERROR);
+            throw RuntimeErrorF("Failed to send RCON packet: {}", WSAGetLastError());
         }
 
         delete[] packet;
@@ -532,40 +558,35 @@ namespace ComputerPlaysFactorio {
         return SUCCESS;
     }
 
-    Result FactorioInstance::RequestPrivate(const std::string &name, uint32_t *id) const {
-        RequestDataBase r;
-        r.id = s_id++;
-        r.name = name;
-        if (id) *id = r.id;
-        const auto json = rfl::json::write(r);
-        return SendRCON("/request " + json);
-    }
+    std::future<json> FactorioInstance::RequestPrivate(const std::string &name, const json *data) {
+        json j;
+        auto id = s_id++;
+        j["id"] = id;
+        j["name"] = name;
+        if (data) j["data"] = *data;
 
-    std::future<ResponseBase> FactorioInstance::AddResponseBase(uint32_t id) {
-        auto promise = std::make_shared<std::promise<ResponseBase>>();
-        m_pending_requests[id] = [promise](const std::string &str) {
-            auto json = rfl::json::read<ResponseBase, rfl::DefaultIfMissing>(str);
-            if (!json) {
-                throw RuntimeErrorF("Malformed response json: {}\nstring: {}", json.error().what(), str);
-            }
-            const auto &data = json.value();
-            promise->set_value(data);
-        };
-        return promise->get_future();
-    }
-
-    std::future<ResponseBase> FactorioInstance::RequestNoRes(const std::string &name) {
-        uint32_t id;
-        if (RequestPrivate(name, &id) != SUCCESS) {
-            std::promise<ResponseBase> promise;
-            promise.set_value(ResponseBase{
-                .id = id,
-                .success = false,
-                .error = RequestError::FACTORIO_NOT_RUNNING
+        if (SendRCON("/request " + j.dump()) != SUCCESS) {
+            std::promise<json> promise;
+            promise.set_value(json{
+                {"id", id},
+                {"success", false},
+                {"error", RequestError::FACTORIO_NOT_RUNNING}
             });
             return promise.get_future();
         }
 
-        return AddResponseBase(id);
+        auto promise = std::make_shared<std::promise<json>>();
+        m_pending_requests[id] = [promise](const json &j) {
+            promise->set_value(j);
+        };
+        return promise->get_future();
+    }
+
+    std::future<json> FactorioInstance::Request(const std::string &name) {
+        return RequestPrivate(name, nullptr);
+    }
+
+    std::future<json> FactorioInstance::Request(const std::string &name, const json &data) {
+        return RequestPrivate(name, &data);
     }
 }

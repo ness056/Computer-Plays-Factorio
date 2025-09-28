@@ -20,37 +20,37 @@ namespace ComputerPlaysFactorio {
             Stop();
         });
 
-        m_instance.RegisterEvent("Ready", [this](const EventBase&) {
+        m_instance.RegisterEvent("Ready", [this](const json&) {
             OnReady();
         });
 
-        m_instance.RegisterEvent<std::vector<Entity>>("AddEntities", [this](const Event<std::vector<Entity>> &event) {
-            for (const auto &entity : event.data) {
+        m_instance.RegisterEvent("AddEntities", [this](const json &event) {
+            auto entities = event["data"].get<std::vector<Entity>>();
+            for (const auto &entity : entities) {
                 m_map_data.AddEntity(entity);
             }
         });
 
-        m_instance.RegisterEvent<std::vector<std::tuple<std::string, MapPosition>>>("RemoveEntities",
-            [this](const Event<std::vector<std::tuple<std::string, MapPosition>>> &event) {
-                for (const auto &entity : event.data) {
-                    m_map_data.RemoveEntity(std::get<0>(entity), std::get<1>(entity));
-                }
+        m_instance.RegisterEvent("RemoveEntities", [this](const json &event) {
+            auto entities = event["data"].get<std::vector<std::tuple<std::string, MapPosition>>>();
+            for (const auto &entity : entities) {
+                m_map_data.RemoveEntity(std::get<0>(entity), std::get<1>(entity));
             }
-        );
-
-        m_instance.RegisterEvent<MapPosition>("ChunkGenerated", [this](const Event<MapPosition> &event) {
-            m_map_data.ChunkGenerated(event.data);
         });
 
-        m_instance.RegisterEvent<std::vector<std::tuple<MapPosition, TileType>>>("SetTiles",
-            [this](const Event<std::vector<std::tuple<MapPosition, TileType>>> &event) {
-                for (const auto &t : event.data) {
-                    m_map_data.SetTile(std::get<0>(t), std::get<1>(t));
-                }
-            }
-        );
+        m_instance.RegisterEvent("ChunkGenerated", [this](const json &event) {
+            auto pos = event["data"].get<MapPosition>();
+            m_map_data.ChunkGenerated(pos);
+        });
 
-        m_instance.RegisterEvent("ExportPathfinderData", [this](const EventBase&) {
+        m_instance.RegisterEvent("SetTiles", [this](const json &event) {
+            auto tiles = event["data"].get<std::vector<std::tuple<MapPosition, TileType>>>();
+            for (const auto &t : tiles) {
+                m_map_data.SetTile(std::get<0>(t), std::get<1>(t));
+            }
+        });
+
+        m_instance.RegisterEvent("ExportPathfinderData", [this](const json&) {
             m_map_data.ExportPathfinderData();
         });
 
@@ -289,9 +289,9 @@ namespace ComputerPlaysFactorio {
             player_pos_futur.wait();
             auto player_pos_r = player_pos_futur.get();
 
-            if (player_pos_r.error != RequestError::SUCCESS || !player_pos_r.data) throw "TODO";
+            if (player_pos_r["error"] != RequestError::SUCCESS) throw "TODO";
 
-            auto &player_pos = player_pos_r.data.value();
+            auto player_pos = player_pos_r.at("data").get<MapPosition>();
             double min_distance = INFINITY;
             size_t current_idx = 0;
 
@@ -314,9 +314,9 @@ namespace ComputerPlaysFactorio {
             if (!join_path) throw;
 
             {
-                auto walk_futur = instance.RequestNoRes("Walk", join_path.value());
+                auto walk_futur = instance.Request("Walk", join_path.value());
                 for (auto entity : std::get<std::vector<SEntity>>(current_waypoint)) {
-                    auto build_futur = instance.RequestNoRes("Build", entity);
+                    auto build_futur = instance.Request("Build", *entity);
                     build_futur.wait();
                 }
                 walk_futur.wait();
@@ -325,10 +325,10 @@ namespace ComputerPlaysFactorio {
             if (paths.size() == 0) return;
             auto first_idx = current_idx;
             do {
-                auto walk_futur = instance.RequestNoRes("Walk", paths[current_idx]);
+                auto walk_futur = instance.Request("Walk", paths[current_idx]);
                 auto &waypoint = waypoints[current_idx + 1 == paths.size() ? 0 : current_idx + 1];
                 for (auto entity : std::get<std::vector<SEntity>>(waypoint)) {
-                    instance.RequestNoRes("Build", entity).wait();
+                    instance.Request("Build", *entity).wait();
                 }
                 walk_futur.wait();
 

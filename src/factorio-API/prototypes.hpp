@@ -21,8 +21,8 @@ namespace ComputerPlaysFactorio {
             return m_prototypes[e.type][e.name];
         }
 
-        // Gets an entity prototype from its name without needing its type.
-        // If you know the exact type, the Get method will be way faster.
+        // Gets an entity prototype from its name without needing its prototype type.
+        // If you know the type beforehand, the Get method will be way faster.
         const json &GetEntity(const std::string &name) const;
 
         bool HasFlag(const std::string &type, const std::string &name, const std::string &flag) const;

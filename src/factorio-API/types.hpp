@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "../utils/base64.h"
-#include "../utils/include-reflectcpp.hpp"
 #include <zlib.h>
 
 #include "../utils/logging.hpp"
@@ -177,10 +176,18 @@ namespace ComputerPlaysFactorio {
         double y;
     };
 
+    void to_json(json &j, const MapPosition &pos);
+    void from_json(const json &j, MapPosition &pos);
+
     struct Area {
         constexpr Area() = default;
         constexpr Area(MapPosition left_top_, MapPosition right_bottom_) :
             left_top(left_top_), right_bottom(right_bottom_) {}
+        constexpr Area(MapPosition center, double radius) {
+            MapPosition shift(radius, radius);
+            left_top = center - shift;
+            right_bottom = center + shift;
+        }
 
         constexpr MapPosition GetLeftBottom() const {
             return MapPosition(left_top.x, right_bottom.y);
@@ -239,13 +246,10 @@ namespace ComputerPlaysFactorio {
         MapPosition right_bottom;
     };
 
-    using Path = std::vector<MapPosition>;
+    void to_json(json &j, const Area &area);
+    void from_json(const json &j, Area &area);
 
-    struct EntitySearchFilters {
-        Area area;
-        std::vector<std::string> name;
-        std::vector<std::string> type;
-    };
+    using Path = std::vector<MapPosition>;
 
     enum class TileType {
         NORMAL,
@@ -259,56 +263,37 @@ namespace ComputerPlaysFactorio {
         Direction direction = Direction::NORTH;
         bool mirror = false;
         bool valid = true;
+        Area bounding_box;
 
-        std::optional<Area> bounding_box;
-
-        // std::optional<std::string> recipe;
-        // std::optional<std::string> type;            // type of underground "input" or "output"
-        // std::optional<std::string> input_priority;  // "left" or "right"
-        // std::optional<std::string> output_priority; // "left" or "right"
+        std::string recipe;
+        std::string underground_type;   // type of underground "input" or "output"
+        std::string input_priority;     // "left" or "right"
+        std::string output_priority;    // "left" or "right"
     };
     using UEntity = std::unique_ptr<Entity>;
     using SEntity = std::shared_ptr<Entity>;
 
+    NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Entity,
+        type,
+        name,
+        position,
+        direction,
+        mirror,
+        valid,
+        bounding_box,
+        recipe,
+        underground_type,
+        input_priority,
+        output_priority
+    )
+
     struct Blueprint {
         std::vector<Entity> entities;
-        // tiles
-        // schedules
     };
 
+    // returns the json of the blueprint as described here: https://wiki.factorio.com/Blueprint_string_format.
+    // In addition the entity objects have the additional field prototype_type that contains the entity type.
     Blueprint DecodeBlueprint(const std::string &str);
-}
-
-namespace rfl {
-    template<>
-    struct Reflector<ComputerPlaysFactorio::MapPosition> {
-        struct ReflType {
-            double x, y;
-        };
-
-        static ComputerPlaysFactorio::MapPosition to(const ReflType &pos) noexcept {
-            return { pos.x, pos.y };
-        }
-
-        static ReflType from(const ComputerPlaysFactorio::MapPosition &pos) {
-            return { pos.x, pos.y };
-        }
-    };
-
-    template<>
-    struct Reflector<ComputerPlaysFactorio::Area> {
-        struct ReflType {
-            ComputerPlaysFactorio::MapPosition left_top, right_bottom;
-        };
-
-        static ComputerPlaysFactorio::Area to(const ReflType &area) noexcept {
-            return { area.left_top, area.right_bottom };
-        }
-
-        static ReflType from(const ComputerPlaysFactorio::Area &area) {
-            return { area.left_top, area.right_bottom };
-        }
-    };
 }
 
 template<>

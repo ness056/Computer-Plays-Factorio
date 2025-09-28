@@ -1,14 +1,9 @@
 #pragma once
 
-#include <string>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 namespace ComputerPlaysFactorio {
-
-    struct Config {
-        std::string factorio_path = "Replace with the Factorio binary path";
-        std::string project_name = "Replace with the name of the project you want to run";
-        bool debug = false;
-    };
     
     class App {
     public:
@@ -21,6 +16,6 @@ namespace ComputerPlaysFactorio {
         void SetTerminate();
         void LoadConfig();
 
-        Config m_config;
+        json m_config;
     };
 }

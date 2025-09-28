@@ -47,9 +47,10 @@ namespace ComputerPlaysFactorio {
     extern const std::chrono::high_resolution_clock::time_point g_start_time;
 
     std::filesystem::path GetRootPath();
-    std::filesystem::path GetTempDir();
+    inline std::filesystem::path GetTempDirectory() { return GetRootPath() / "temp"; }
+    void CreateTempDirectory();
+    void ClearTempDirectory();
     inline std::filesystem::path GetDataPath() { return GetRootPath() / "data"; }
     inline std::filesystem::path GetModsPath() { return GetDataPath() / "mods"; }
     inline std::filesystem::path GetConfigPath() { return GetDataPath() / "config.json"; }
-    void ClearTempDirectory();
 }

@@ -6,17 +6,12 @@ namespace ComputerPlaysFactorio {
 
     bool Chunk::Collides(const Area &bounding_box) const {
         for (const auto &entity : entities) {
-            if (!entity.bounding_box) {
-                throw RuntimeErrorF("No bounding_box");
-            }
-            if (entity.bounding_box->Collides(bounding_box)) return true;
+            if (entity.bounding_box.Collides(bounding_box)) return true;
         }
         return false;
     }
 
     void MapData::AddEntity(const Entity &entity) {
-        if (!entity.bounding_box) throw RuntimeErrorF("No bounding_box");
-
         std::scoped_lock lock(m_mutex);
 
         const auto chunk_position = entity.position.ChunkPosition();
@@ -35,12 +30,12 @@ namespace ComputerPlaysFactorio {
         const auto placeable_off_grid = g_prototypes.HasFlag(entity, "placeable-off-grid");
         const double character_size = g_prototypes.Get("character", "character")["collision_box"][1][0];
         const double n = placeable_off_grid ? character_size * 2 : character_size;
-        const double x2 = std::floor((entity.bounding_box->right_bottom.x + n) * 2) / 2;
-        const double y2 = std::floor((entity.bounding_box->right_bottom.y + n) * 2) / 2;
+        const double x2 = std::floor((entity.bounding_box.right_bottom.x + n) * 2) / 2;
+        const double y2 = std::floor((entity.bounding_box.right_bottom.y + n) * 2) / 2;
 
         auto &collisions = m_pathfinder_entity;
-        for (double x1 = std::ceil((entity.bounding_box->left_top.x - n) * 2) / 2; x1 <= x2; x1 += 0.5) {
-            for (double y1 = std::ceil((entity.bounding_box->left_top.y - n) * 2) / 2; y1 <= y2; y1 += 0.5) {
+        for (double x1 = std::ceil((entity.bounding_box.left_top.x - n) * 2) / 2; x1 <= x2; x1 += 0.5) {
+            for (double y1 = std::ceil((entity.bounding_box.left_top.y - n) * 2) / 2; y1 <= y2; y1 += 0.5) {
                 if (!collisions.contains({x1, y1})) {
                     collisions.emplace(x1, y1);
                 }
@@ -64,9 +59,7 @@ namespace ComputerPlaysFactorio {
             return e.name == name && e.position == pos;
         });
 
-        if (!entity_it->bounding_box) throw RuntimeErrorF("No bounding_box");
-
-        Area bounding_box = entity_it->bounding_box.value();
+        Area bounding_box = entity_it->bounding_box;
         auto collides_with_player = g_prototypes.HasCollisionMask(*entity_it, "player");
         const auto placeable_off_grid = g_prototypes.HasFlag(*entity_it, "placeable-off-grid");
         entities.erase(entity_it);
@@ -237,8 +230,8 @@ namespace ComputerPlaysFactorio {
 
     void MapData::ExportPathfinderData() const {
         // /c for k,v in pairs(helpers.json_to_table(json)) do rendering.draw_circle{color={255,0,0},surface=1,filled=true,radius=0.18,target=v} end
-        Debug("Current pathfinder data: {}", rfl::json::write(m_pathfinder_chunk));
-        Debug("Current pathfinder data: {}", rfl::json::write(m_pathfinder_entity));
-        Debug("Current pathfinder data: {}", rfl::json::write(m_pathfinder_tile));
+        Debug("Current pathfinder data: {}", json(m_pathfinder_chunk).dump());
+        Debug("Current pathfinder data: {}", json(m_pathfinder_entity).dump());
+        Debug("Current pathfinder data: {}", json(m_pathfinder_tile).dump());
     }
 }

@@ -9,7 +9,10 @@
 #include <thread>
 #include <mutex>
 #include <map>
+#include <unordered_map>
 #include <set>
+#include <unordered_set>
+#include <deque>
 #include <filesystem>
 #include <algorithm>
 #include <future>
@@ -21,8 +24,6 @@
 #include <WS2tcpip.h>
 #include <Windows.h>
 #pragma comment(lib, "WS2_32")
-#define SOCKLEN int
-#define LAST_SOCKET_ERROR WSAGetLastError()
 #else
 #error "Only Windows is supported for now"
 #endif
@@ -81,33 +82,16 @@ namespace ComputerPlaysFactorio {
         NOT_ENOUGH_INGREDIENTS,
         ENTITY_NOT_ROTATABLE
     };
+    
+    class LuaError : public std::exception {
+    public:
+        LuaError(const std::string &msg_) : msg(msg_) {}
+        const char *what() const {
+            return msg.c_str();
+        }
 
-    struct ResponseBase {
-        uint32_t id;
-        bool success;
-        RequestError error;
-    };
-
-    template<class T>
-    struct Response {
-        uint32_t id;
-        bool success;
-        RequestError error;
-        std::optional<T> data;
-    };
-
-    struct EventBase {
-        uint32_t id;
-        std::string name;
-        uint64_t tick;
-    };
-
-    template<class T>
-    struct Event {
-        uint32_t id;
-        std::string name;
-        uint64_t tick;
-        T data;
+    private:
+        std::string msg;
     };
 
     class FactorioInstance {
@@ -155,42 +139,25 @@ namespace ComputerPlaysFactorio {
 
         Result SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND) const;
 
-        template<class T, class R>
-        std::future<Response<R>> Request(const std::string &name, const T &data);
-        template<class R>
-        std::future<Response<R>> Request(const std::string &name);
+        std::future<json> Request(const std::string &name);
+        std::future<json> Request(const std::string &name, const json &data);
         template<class T>
-        std::future<ResponseBase> RequestNoRes(const std::string &name, const T &data);
-        std::future<ResponseBase> RequestNoRes(const std::string &name);
+        std::future<json> Request(const std::string &name, const T &data) {
+            json j(data);
+            return Request(name, j);
+        }
 
-        inline auto Broadcast(const std::string &msg) { return RequestNoRes("Broadcast", msg); }
-        inline auto SetGameSpeed(float ticks) { return RequestNoRes("GameSpeed", ticks); }
-        inline auto PauseToggle() { return RequestNoRes("PauseToggle"); }
-        inline auto Save(const std::string &name) { return RequestNoRes("Save", name); }
-        inline auto PlayerPosition() { return Request<MapPosition>("PlayerPosition"); }
+        inline auto Broadcast(const std::string &msg) { return Request("Broadcast", msg); }
+        inline auto SetGameSpeed(float ticks) { return Request("GameSpeed", ticks); }
+        inline auto PauseToggle() { return Request("PauseToggle"); }
+        inline auto Save(const std::string &name) { return Request("Save", name); }
+        inline auto PlayerPosition() { return Request("PlayerPosition"); }
 
-        template<typename T>
-        using EventCallback = std::function<void(const Event<T>&)>;
-        using EventCallbackDL = std::function<void(const EventBase&)>;
-
-        template<typename T>
-        void RegisterEvent(const std::string &name, const EventCallback<T>&);
-        void RegisterEvent(const std::string &name, const EventCallbackDL&);
+        void RegisterEvent(const std::string &name, std::function<void(const json&)>);
 
         const Type instance_type;
 
     private:
-        struct RequestDataBase {
-            uint32_t id;
-            std::string name;
-        };
-
-        template<class T>
-        struct RequestData {
-            uint32_t id;
-            std::string name;
-            T data;
-        };
 
         static void InitStatic();
         static inline std::mutex s_static_mutex;
@@ -218,26 +185,21 @@ namespace ComputerPlaysFactorio {
 
         std::function<void()> m_ready_callback;
         std::function<void()> m_closed_callback;
-        std::function<void(int exitCode)> m_exited_callback;
+        std::function<void(int exit_code)> m_exited_callback;
         
         int ReadStdout(char *buffer, int size);
         void CheckWord(const std::string &previous_word, const std::string &word);
         void OutListener(terminate_handler terminate);
         std::thread m_out_listener;
 
-        inline std::filesystem::path GetInstanceTempDir() { return GetTempDir() / ("data" + std::to_string(m_id)); }
+        inline std::filesystem::path GetInstanceTempDir() { return GetTempDirectory() / ("data" + std::to_string(m_id)); }
         inline std::filesystem::path GetConfigPath() { return GetInstanceTempDir() / "config.ini"; }
 
-        std::map<uint32_t, std::function<void(const std::string &data)>> m_pending_requests;
+        std::map<uint32_t, std::function<void(const json&)>> m_pending_requests;
 
-        Result RequestPrivate(const std::string &name, uint32_t *id = nullptr) const;
-        template<class T>
-        Result RequestPrivate(const std::string &name, const T &data, uint32_t *id = nullptr) const;
-        template<class R>
-        std::future<Response<R>> AddResponse(uint32_t id);
-        std::future<ResponseBase> AddResponseBase(uint32_t id);
+        std::future<json> RequestPrivate(const std::string &name, const json*);
 
-        std::map<std::string, std::function<void(const std::string &data)>> m_event_handlers;
+        std::map<std::string, std::function<void(const json &data)>> m_event_handlers;
 
         // Find a suitable port for Factorio to use for RCON.
         void FindAvailablePort();
@@ -249,91 +211,4 @@ namespace ComputerPlaysFactorio {
         bool m_rcon_connected = false;
         SOCKET m_rcon_socket = INVALID_SOCKET;
     };
-
-    template <class T>
-    Result FactorioInstance::RequestPrivate(const std::string &name, const T &data, uint32_t *id) const {
-        RequestData<T> r;
-        r.id = s_id++;
-        r.name = name;
-        r.data = data;
-        if (id) *id = r.id;
-        const auto json = rfl::json::write(r);
-        return SendRCON("/request " + json);
-    }
-
-    template<class R>
-    std::future<Response<R>> FactorioInstance::AddResponse(uint32_t id) {
-        auto promise = std::make_shared<std::promise<Response<R>>>();
-        m_pending_requests[id] = [promise](const std::string &str) {
-            auto json = rfl::json::read<Response<R>, rfl::DefaultIfMissing>(str);
-            if (!json) {
-                throw RuntimeErrorF("Malformed response json: {}\nstring: {}", json.error().what(), str);
-            }
-            const auto &data = json.value();
-            promise->set_value(data);
-        };
-        return promise->get_future();
-    }
-
-    template<class T, class R>
-    std::future<Response<R>> FactorioInstance::Request(const std::string &name, const T &data) {
-        uint32_t id;
-        if (RequestPrivate(name, data, &id) != SUCCESS) {
-            Response<R> res;
-            res.id = id;
-            res.success = false;
-            res.error = RequestError::FACTORIO_NOT_RUNNING;
-
-            std::promise<Response<R>> promise;
-            promise.set_value(res);
-            return promise.get_future();
-        }
-
-        return AddResponse<R>(id);
-    }
-
-    template<class R>
-    std::future<Response<R>> FactorioInstance::Request(const std::string &name) {
-        uint32_t id;
-        if (RequestPrivate(name, &id) != SUCCESS) {
-            Response<R> res;
-            res.id = id;
-            res.success = false;
-            res.error = RequestError::FACTORIO_NOT_RUNNING;
-
-            std::promise<Response<R>> promise;
-            promise.set_value(res);
-            return promise.get_future();
-        }
-
-        return AddResponse<R>(id);
-    }
-
-    template<class T>
-    std::future<ResponseBase> FactorioInstance::RequestNoRes(const std::string &name, const T &data) {
-        uint32_t id;
-        if (RequestPrivate(name, data, &id) != SUCCESS) {
-            std::promise<ResponseBase> promise;
-            promise.set_value(ResponseBase{
-                .id = id,
-                .success = false,
-                .error = RequestError::FACTORIO_NOT_RUNNING
-            });
-            return promise.get_future();
-        }
-
-        return AddResponseBase(id);
-    }
-
-    template<typename T>
-    void FactorioInstance::RegisterEvent(const std::string &name, const EventCallback<T> &callback) {
-        m_event_handlers[name] = [=](const std::string &str) {
-            auto json = rfl::json::read<Event<T>, rfl::DefaultIfMissing>(str);
-            if (!json) {
-                throw RuntimeErrorF("Malformed event json: {}\nstring: {}", json.error().what(), str);
-            }
-            const auto &data = json.value();
-            callback(data);
-        };
-    }
 }

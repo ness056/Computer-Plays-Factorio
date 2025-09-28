@@ -12,7 +12,7 @@ local API = require("__computer-plays-factorio__.api")
 Event.OnEvent(defines.events.on_tick, function (event)
     if game.tick == 1 then
         game.get_player(1).insert({name="stone-furnace", count=700})
-        game.get_player(1).insert({name="transport-belt", count=250})
+        game.get_player(1).insert({name="transport-belt", count=300})
         game.get_player(1).insert({name="inserter", count=250})
         game.get_player(1).insert({name="steel-furnace", count=250})
         game.get_player(1).insert({name="small-electric-pole", count=250})

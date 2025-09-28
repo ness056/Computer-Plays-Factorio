@@ -42,6 +42,6 @@ namespace ComputerPlaysFactorio {
 
     void ShowStacktrace(std::ostream &out) {
         const auto trace = cpptrace::generate_trace();
-        trace.print(out);
+        Error(trace.to_string());
     }
 }

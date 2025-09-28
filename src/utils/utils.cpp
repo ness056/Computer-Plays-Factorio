@@ -1,5 +1,7 @@
 #include "utils.hpp"
 
+#include "logging.hpp"
+
 namespace ComputerPlaysFactorio {
 
     const std::chrono::high_resolution_clock::time_point g_start_time =
@@ -14,9 +16,9 @@ namespace ComputerPlaysFactorio {
     }
 
     static HANDLE lock = INVALID_HANDLE_VALUE;
-    
-    std::filesystem::path GetTempDir() {
-        const auto path = GetRootPath() / "temp";
+
+    void CreateTempDirectory() {
+        auto path = GetTempDirectory();
         const auto lock_path = path / ".lock";
 
         if (!std::filesystem::exists(path)) std::filesystem::create_directory(path);
@@ -24,11 +26,9 @@ namespace ComputerPlaysFactorio {
         if (lock == INVALID_HANDLE_VALUE) {
             lock = CreateFileA(lock_path.string().c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
             if (lock == INVALID_HANDLE_VALUE) {
-                throw std::runtime_error("Failed to create lock");
+                throw RuntimeErrorF("Failed to create lock. Make sure that no other instance of Computer Plays Factorio is running.");
             }
         }
-
-        return path;
     }
 
     static void RemoveAllTempDir() {
