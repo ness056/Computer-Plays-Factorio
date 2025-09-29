@@ -44,7 +44,7 @@ namespace ComputerPlaysFactorio {
         }
     }
 
-    Blueprint DecodeBlueprint(const std::string &str) {
+    Blueprint DecodeBlueprintStr(const std::string &str) {
         auto compressed = base64_decode(str.substr(1), true);
 
         json blueprint_json;
@@ -89,8 +89,10 @@ namespace ComputerPlaysFactorio {
 
         if (!blueprint_json.contains("entities") || !blueprint_json["entities"].is_array()) return {};
 
+        size_t n_entity = blueprint_json["entities"].size();
         Blueprint blueprint;
-        blueprint.entities.reserve(blueprint_json["entities"].size());
+        blueprint.center = {0, 0};
+        blueprint.entities.reserve(n_entity);
 
         for (auto &e : blueprint_json["entities"]) {
             if (!e.contains("name") || !e.contains("position")) {
@@ -99,6 +101,7 @@ namespace ComputerPlaysFactorio {
 
             auto &p = g_prototypes.GetEntity(e["name"]);
             auto pos = e["position"].get<MapPosition>();
+            blueprint.center += pos;
 
             blueprint.entities.emplace_back(
                 p["type"],
@@ -109,11 +112,22 @@ namespace ComputerPlaysFactorio {
                 true,
                 p.contains("collision_box") ? p["collision_box"].get<Area>() + pos : Area{},
                 e.contains("recipe") ? e["recipe"].get<std::string>() : "",
+                e.contains("type") ? e["type"].get<std::string>() : "",
                 e.contains("input_priority") ? e["input_priority"].get<std::string>() : "",
                 e.contains("output_priority") ? e["output_priority"].get<std::string>() : ""
             );
         }
 
+        blueprint.center /= (double)n_entity;
+
         return blueprint;
+    }
+
+    Blueprint DecodeBlueprintFile(const std::filesystem::path &path) {
+        auto size = std::filesystem::file_size(path);
+        std::string bp(size, '\0');
+        std::ifstream in(path);
+        in.read(&bp[0], size);
+        return DecodeBlueprintStr(bp);
     }
 }

@@ -38,6 +38,9 @@ namespace ComputerPlaysFactorio {
         double radius,
         const std::unordered_set<MapPosition> *additional_colliders
     ) {
+        assert((start * 2).Round() / 2 == start);
+        assert((goal * 2).Round() / 2 == goal);
+
         const double sq_radius = radius * radius;
         std::shared_ptr<Node> current = nullptr;
         std::priority_queue<std::shared_ptr<Node>, std::vector<std::shared_ptr<Node>>, NodeComp> open_queue;

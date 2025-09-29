@@ -39,20 +39,22 @@ RequestError = {
     FACTORIO_NOT_RUNNING = 1,
     FACTORIO_EXITED = 2,
     BUSY = 3,                       -- An instruction is already being executed
-    NO_PATH_FOUND = 4,              -- Pathfinder failed to find a path
-    EMPTY_PATH = 5,                 -- The given path is empty
-    ENTITY_DOESNT_EXIST = 6,        -- No entity prototype with the given name exist
-    ITEM_DOESNT_EXIST = 7,          -- No item prototype with the given name exist
-    FLUID_DOESNT_EXIST = 8,         -- No fluid prototype with the given name exist
-    RECIPE_DOESNT_EXIST = 9,        -- No recipe prototype with the given name exist
-    NOT_ENOUGH_ITEM = 10,           -- Not enough item in the inventory
-    NOT_ENOUGH_ROOM = 11,           -- The entity cannot be built because another entity is in the way
-    NOT_IN_RANGE = 12,              -- The player is not in range
-    ITEM_NOT_BUILDABLE = 13,        -- The given item prototype cannot be built in an entity
-    NO_ENTITY_FOUND = 14,           -- No entity at the given position was found
-    NO_INVENTORY_FOUND = 15,        -- The given entity or player does not have an inventory of the given index
-    NOT_ENOUGH_INGREDIENTS = 16,    -- Not enough ingredients to craft
-    ENTITY_NOT_ROTATABLE = 17,      -- The given entity is not rotatable
+    NOT_BUSY = 4,                   -- No instruction is being executed
+    CANCELED = 5,
+    NO_PATH_FOUND = 6,              -- Pathfinder failed to find a path
+    EMPTY_PATH = 7,                 -- The given path is empty
+    ENTITY_DOESNT_EXIST = 8,        -- No entity prototype with the given name exist
+    ITEM_DOESNT_EXIST = 9,          -- No item prototype with the given name exist
+    FLUID_DOESNT_EXIST = 10,        -- No fluid prototype with the given name exist
+    RECIPE_DOESNT_EXIST = 11,       -- No recipe prototype with the given name exist
+    NOT_ENOUGH_ITEM = 12,           -- Not enough item in the inventory
+    NOT_ENOUGH_ROOM = 13,           -- The entity cannot be built because another entity is in the way
+    NOT_IN_RANGE = 14,              -- The player is not in range
+    ITEM_NOT_BUILDABLE = 15,        -- The given item prototype cannot be built in an entity
+    NO_ENTITY_FOUND = 16,           -- No entity at the given position was found
+    NO_INVENTORY_FOUND = 17,        -- The given entity or player does not have an inventory of the given index
+    NOT_ENOUGH_INGREDIENTS = 18,    -- Not enough ingredients to craft
+    ENTITY_NOT_ROTATABLE = 19       -- The given entity is not rotatable
 }
 
 ---@enum TileType

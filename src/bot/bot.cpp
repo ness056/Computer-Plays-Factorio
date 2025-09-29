@@ -54,8 +54,8 @@ namespace ComputerPlaysFactorio {
             m_map_data.ExportPathfinderData();
         });
 
-        s_burner_bp = DecodeBlueprint(s_burner_bp_str);
-        s_test_bp = DecodeBlueprint(s_test_bp_str);
+        s_burner_bp = DecodeBlueprintStr(s_burner_bp_str);
+        s_test_bp = DecodeBlueprintFile(s_test_bp_str);
     }
    
     Result Bot::Start() {
@@ -140,15 +140,14 @@ namespace ComputerPlaysFactorio {
             PopInstruction();
         }
     }
-
-    struct BuildBlueprintCmp {
-        bool operator()(const std::shared_ptr<Entity> &lhs, const std::shared_ptr<Entity> &rhs) {
-            return lhs->position.x < rhs->position.x && lhs->position.y < rhs->position.y;
-        }
-    };
     
     void Bot::BuildBlueprint(Task &task, const Blueprint &blueprint, const MapPosition &offset, Direction direction, bool mirror) {
-        std::priority_queue<SEntity, std::vector<SEntity>, BuildBlueprintCmp> queue;
+        const MapPosition center = ((blueprint.center.Rotate(direction) + offset) * 2).Round() / 2;
+        const auto comp = [&center](const SEntity &lhs, const SEntity &rhs) {
+            return MapPosition::SqDistance(center, lhs->position) < MapPosition::SqDistance(center, rhs->position);
+        };
+
+        std::priority_queue<SEntity, std::vector<SEntity>, decltype(comp)> queue(comp);
         std::vector<SEntity> entities;
         std::unordered_set<MapPosition> colliders;
 
@@ -167,6 +166,9 @@ namespace ComputerPlaysFactorio {
 
             queue.push(copy);
             entities.push_back(copy);
+
+            auto collides_with_player = g_prototypes.HasCollisionMask(e, "player");
+            if (!collides_with_player) continue;
 
             auto &p = g_prototypes.Get(e);
             if (!p.contains("collision_box")) continue;
@@ -199,19 +201,42 @@ namespace ComputerPlaysFactorio {
             queue.pop();
             if (!e->valid) continue;
 
-            MapPosition pos = e->position;
-            double ceiled_x = std::ceil(e->position.x * 2) / 2;
-            for (double ix = -reach_distance; ix <= reach_distance; ix += 0.5) {
-                double x = ix + ceiled_x;
-                double dy = std::sqrt(reach_distance * reach_distance - ix * ix);
-                for (double y = std::ceil((e->position.y - dy) * 2) / 2; y < std::floor((e->position.y + dy) * 2) / 2; y += 0.5) {
-                    if (!m_map_data.PathfinderCollides({x, y}) && !colliders.contains({x, y})) {
-                        pos = {x, y};
-                        goto Found;
-                    }
-                }
+            const auto comp2 = [&center](const MapPosition &lhs, const MapPosition &rhs) {
+                return MapPosition::SqDistance(center, lhs) < MapPosition::SqDistance(center, rhs);
+            };
+            std::priority_queue<MapPosition, std::vector<MapPosition>, decltype(comp2)> points(comp2);
+            std::unordered_set<MapPosition> visited;
+
+            MapPosition pos = (center * 2).Round() / 2;
+            if (MapPosition::SqDistance(pos, e->position) > sq_reach_distance) {
+                double angle = (pos - e->position).Angle();
+                pos.x = e->position.x + std::round(reach_distance * std::cos(angle) * 2) / 2;
+                pos.y = e->position.y + std::round(reach_distance * std::sin(angle) * 2) / 2;
             }
 
+            do {
+                for (double dx = -0.5; dx <= 0.5; dx += 0.5) {
+                    for (double dy = -0.5; dy <= 0.5; dy += 0.5) {
+                        if (dx == 0 && dy == 0) continue;
+                        MapPosition neighbor = pos + MapPosition(dx, dy);
+                        if (
+                            !visited.contains(neighbor) &&
+                            MapPosition::SqDistance(neighbor, e->position) <= sq_reach_distance
+                        ) {
+                            points.push(neighbor);
+                        }
+                    }
+                }
+
+                pos = points.top();
+                points.pop();
+                
+                if (!m_map_data.PathfinderCollides(pos) && !colliders.contains(pos)) {
+                    goto Found;
+                }
+            } while (!points.empty());
+
+            throw "TODO";
 
             Found:
 
@@ -260,25 +285,23 @@ namespace ComputerPlaysFactorio {
 
         // Find actual paths
         std::vector<Path> paths;
+        paths.resize(waypoints_final.size());
+
         auto end = waypoints_final.end();
-        for (auto first = waypoints_final.begin(); first != end; first++) {
-            auto second = std::next(first);
-            if (second == end) {
-                second = waypoints_final.begin();
-                if (first == second) break;
-            }
+        for (int i = 0; i < waypoints_final.size(); i++) {
+            const auto &first = waypoints_final[i];
+            const auto &second = i + 1 == waypoints_final.size() ? waypoints_final[0] : waypoints_final[i + 1];
 
             auto path = FindPath(
                 m_map_data,
-                std::get<MapPosition>(*first),
-                std::get<MapPosition>(*second),
-                std::get<double>(*second),
+                std::get<MapPosition>(first),
+                std::get<MapPosition>(second),
+                std::get<double>(second),
                 &colliders
             );
             if (!path) throw "TODO";
 
-            if (path) paths.emplace_back(std::move(path.value()));
-            else paths.emplace_back();
+            paths[i + 1 == waypoints_final.size() ? 0 : i + 1] = std::move(path.value());
         }
 
         task.QueueInstruction([
@@ -314,22 +337,25 @@ namespace ComputerPlaysFactorio {
             if (!join_path) throw;
 
             {
-                auto walk_futur = instance.Request("Walk", join_path.value());
+                auto walk_futur = instance.Request("WalkAndStay", join_path.value());
                 for (auto entity : std::get<std::vector<SEntity>>(current_waypoint)) {
-                    auto build_futur = instance.Request("Build", *entity);
-                    build_futur.wait();
+                    instance.Request("Build", *entity);
                 }
+                instance.Request("WaitAllRangedRequests").wait();
+                instance.Request("WalkFinishAndStop").wait();
                 walk_futur.wait();
             }
 
-            if (paths.size() == 0) return;
             auto first_idx = current_idx;
+            current_idx++;
             do {
-                auto walk_futur = instance.Request("Walk", paths[current_idx]);
-                auto &waypoint = waypoints[current_idx + 1 == paths.size() ? 0 : current_idx + 1];
+                auto walk_futur = instance.Request("WalkAndStay", paths[current_idx]);
+                auto &waypoint = waypoints[current_idx];
                 for (auto entity : std::get<std::vector<SEntity>>(waypoint)) {
-                    instance.Request("Build", *entity).wait();
+                    instance.Request("Build", *entity);
                 }
+                instance.Request("WaitAllRangedRequests").wait();
+                instance.Request("WalkFinishAndStop").wait();
                 walk_futur.wait();
 
                 current_idx++;

@@ -148,7 +148,7 @@ namespace ComputerPlaysFactorio {
 
         // NORTH direction is an angle of 0, EAST is pi/2 clockwise
         // Only supports the north, south, east and west. Others will return a copy.
-        constexpr MapPosition Rotate(Direction direction) {
+        constexpr MapPosition Rotate(Direction direction) const {
             switch (direction) {
             case Direction::SOUTH: return MapPosition(-x, -y);
             case Direction::WEST: return MapPosition(y, -x);
@@ -161,6 +161,10 @@ namespace ComputerPlaysFactorio {
 
         constexpr MapPosition Round() const {
             return MapPosition(std::round(x), std::round(y));
+        }
+
+        double Angle() const {
+            return std::atan2(y, x);
         }
 
         static constexpr double SqDistance(const MapPosition &lhs, const MapPosition &rhs) {
@@ -289,11 +293,14 @@ namespace ComputerPlaysFactorio {
 
     struct Blueprint {
         std::vector<Entity> entities;
+        MapPosition center;
     };
 
     // returns the json of the blueprint as described here: https://wiki.factorio.com/Blueprint_string_format.
     // In addition the entity objects have the additional field prototype_type that contains the entity type.
-    Blueprint DecodeBlueprint(const std::string &str);
+    Blueprint DecodeBlueprintStr(const std::string &str);
+
+    Blueprint DecodeBlueprintFile(const std::filesystem::path &path);
 }
 
 template<>

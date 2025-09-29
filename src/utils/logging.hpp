@@ -72,7 +72,7 @@ namespace ComputerPlaysFactorio {
         }
     }
 
-    void ShowStacktrace(std::ostream &out = std::cerr);
+    void ShowStacktrace();
 
     template<typename... Types>
     inline std::runtime_error RuntimeErrorF(

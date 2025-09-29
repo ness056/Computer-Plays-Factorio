@@ -40,8 +40,8 @@ namespace ComputerPlaysFactorio {
         return level;
     }
 
-    void ShowStacktrace(std::ostream &out) {
+    void ShowStacktrace() {
         const auto trace = cpptrace::generate_trace();
-        Error(trace.to_string());
+        Error("{}", trace.to_string());
     }
 }

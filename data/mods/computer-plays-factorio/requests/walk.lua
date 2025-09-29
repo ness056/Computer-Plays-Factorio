@@ -161,11 +161,10 @@ local function EvaluatePath()
 
     local speed = player.character.character_running_speed
     if Vector.SqLength(v) <= math.pow(speed, 2) then
-        storage.current_waypoint = storage.current_waypoint + 1
-
-        if storage.current_waypoint <= table_size(path) then
+        if storage.current_waypoint + 1 <= table_size(path) then
+            storage.current_waypoint = storage.current_waypoint + 1
             EvaluatePath()
-        else
+        elseif not storage.is_walk_until then
             API.Success(storage.walk_request)
             storage.walk_request = nil
             walking_state.walking = false
@@ -217,9 +216,59 @@ API.AddRequestHandler("Walk", function (request)
         return
     end
 
+    storage.is_walk_until = false
     storage.walk_request = request
     storage.current_waypoint = 1
     EvaluatePath()
+end)
+
+---@param request Request<MapPosition.0[]>
+API.AddRequestHandler("WalkAndStay", function (request)
+    if storage.walk_request then
+        API.Failed(request, RequestError.BUSY)
+        return
+    end
+
+    if table_size(request.data) == 0 then
+        API.Failed(request, RequestError.EMPTY_PATH)
+        return
+    end
+
+    storage.is_walk_until = true
+    storage.walk_request = request
+    storage.current_waypoint = 1
+    EvaluatePath()
+end)
+
+API.AddRequestHandler("WalkFinishAndStop", function (request)
+    if not storage.walk_request then
+        API.Failed(request, RequestError.NOT_BUSY)
+        return
+    end
+
+    storage.is_walk_until = false
+    API.Success(request)
+end)
+
+---@param request Request<any>
+API.AddRequestHandler("WalkStop", function (request)
+    if not storage.walk_request then
+        API.Failed(request, RequestError.NOT_BUSY)
+        return
+    end
+
+    local player = game.get_player(1) --[[@as LuaPlayer]]
+    local walking_state = player.walking_state
+    walking_state.walking = false
+    player.walking_state = walking_state
+
+    if storage.is_walk_until then
+        API.Success(storage.walk_request)
+    else
+        API.Failed(storage.walk_request, RequestError.CANCELED)
+    end
+    storage.walk_request = nil
+    API.Success(request)
 end)
 
 Event.OnEvent(defines.events.on_tick, EvaluatePath)

@@ -67,6 +67,8 @@ namespace ComputerPlaysFactorio {
         FACTORIO_NOT_RUNNING,
         FACTORIO_EXITED,
         BUSY,
+        NOT_BUSY,
+        CANCELED,
         NO_PATH_FOUND,
         EMPTY_PATH,
         ENTITY_DOESNT_EXIST,
