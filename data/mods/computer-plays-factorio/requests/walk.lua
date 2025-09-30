@@ -3,6 +3,12 @@ local Event = require("__computer-plays-factorio__.event")
 local Math2d = require("__computer-plays-factorio__.math2d")
 local Vector = Math2d.Vector
 
+---@param event EventData.on_player_changed_position
+Event.OnEvent(defines.events.on_player_changed_position, function (event)
+    if event.player_index ~= 1 then return end
+    API.InvokeEvent("PlayerMoved", game.get_player(1).position)
+end)
+
 ---@param event EventData.on_chunk_generated
 Event.OnEvent(defines.events.on_chunk_generated, function (event)
     API.InvokeEvent("ChunkGenerated", event.position)
@@ -21,8 +27,7 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
                 type = entity.type,
                 name = entity.name,
                 position = entity.position,
-                direction = entity.direction,
-                bounding_box = entity.bounding_box,
+                direction = entity.direction
             })
         end
     end
@@ -47,7 +52,6 @@ local function EntityBuilt(entity)
         name = entity.name,
         position = entity.position,
         direction = entity.direction,
-        bounding_box = entity.bounding_box,
         collides_with_player = entity.prototype.collision_mask.layers["player"] or false,
         placeable_off_grid = entity.has_flag("placeable-off-grid")
     }})

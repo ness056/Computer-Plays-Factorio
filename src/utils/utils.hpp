@@ -44,6 +44,18 @@ namespace ComputerPlaysFactorio {
         throw;
     }
 
+    double HalfFloor(double x) {
+        return std::floor(x * 2) / 2;
+    }
+
+    double HalfCeil(double x) {
+        return std::ceil(x * 2) / 2;
+    }
+
+    double HalfRound(double x) {
+        return std::round(x * 2) / 2;
+    }
+
     extern const std::chrono::high_resolution_clock::time_point g_start_time;
 
     std::filesystem::path GetRootPath();

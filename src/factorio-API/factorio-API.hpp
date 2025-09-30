@@ -13,6 +13,7 @@
 #include <set>
 #include <unordered_set>
 #include <deque>
+#include <queue>
 #include <filesystem>
 #include <algorithm>
 #include <future>
@@ -27,9 +28,6 @@
 #else
 #error "Only Windows is supported for now"
 #endif
-
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
 
 #include "types.hpp"
 #include "../utils/logging.hpp"

@@ -16,23 +16,25 @@ namespace ComputerPlaysFactorio {
             CheckValid();
             return m_prototypes[type][name];
         }
-        inline const json &Get(const Entity &e) const {
-            CheckValid();
-            return m_prototypes[e.type][e.name];
-        }
 
         // Gets an entity prototype from its name without needing its prototype type.
         // If you know the type beforehand, the Get method will be way faster.
         const json &GetEntity(const std::string &name) const;
 
-        bool HasFlag(const std::string &type, const std::string &name, const std::string &flag) const;
+        bool HasFlag(const json &prototype, const std::string &flag) const;
+        inline bool HasFlag(const std::string &type, const std::string &name, const std::string &flag) const {
+            return HasFlag(m_prototypes[type][name], flag);
+        }
         inline bool HasFlag(const Entity &e, const std::string &flag) const {
-            return HasFlag(e.type, e.name, flag);
+            return HasFlag(e.GetPrototype(), flag);
         };
 
-        bool HasCollisionMask(const std::string &type, const std::string &name, const std::string &mask) const;
+        bool HasCollisionMask(const json &prototype, const std::string &mask) const;
+        inline bool HasCollisionMask(const std::string &type, const std::string &name, const std::string &mask) const {
+            return HasCollisionMask(m_prototypes[type][name], mask);
+        }
         inline bool HasCollisionMask(const Entity &e, const std::string &mask) const {
-            return HasCollisionMask(e.type, e.name, mask);
+            return HasCollisionMask(e.GetPrototype(), mask);
         };
 
     private:

@@ -7,6 +7,8 @@
 
 #include "../utils/base64.h"
 #include <zlib.h>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 #include "../utils/logging.hpp"
 
@@ -163,6 +165,10 @@ namespace ComputerPlaysFactorio {
             return MapPosition(std::round(x), std::round(y));
         }
 
+        constexpr MapPosition HalfRound() const {
+            return MapPosition(ComputerPlaysFactorio::HalfRound(x), ComputerPlaysFactorio::HalfRound(y));
+        }
+
         double Angle() const {
             return std::atan2(y, x);
         }
@@ -223,6 +229,12 @@ namespace ComputerPlaysFactorio {
             return area;
         }
 
+        // NORTH direction is an angle of 0, EAST is pi/2 clockwise
+        // Only supports the north, south, east and west. Others will return a copy.
+        constexpr Area Rotate(Direction direction) const {
+            return Area(left_top.Rotate(direction), right_bottom.Rotate(direction));
+        }
+
         constexpr double Distance(const MapPosition &point) const {
             auto x = std::max({left_top.x - point.x, 0., point.x - right_bottom.x});
             auto y = std::max({left_top.y - point.y, 0., point.y - right_bottom.y});
@@ -260,36 +272,83 @@ namespace ComputerPlaysFactorio {
         WATER
     };
 
-    struct Entity {
-        std::string type;
-        std::string name;
-        MapPosition position;
-        Direction direction = Direction::NORTH;
-        bool mirror = false;
-        bool valid = true;
-        Area bounding_box;
+    class Entity {
+    public:
+        friend constexpr bool operator==(const Entity &lhs, const Entity &rhs) {
+            return lhs.m_type == rhs.m_type &&
+                lhs.m_name == rhs.m_name &&
+                lhs.m_position == rhs.m_position &&
+                lhs.m_direction == rhs.m_direction &&
+                lhs.m_mirror == rhs.m_mirror &&
+                lhs.m_recipe == rhs.m_recipe &&
+                lhs.m_underground_type == rhs.m_underground_type &&
+                lhs.m_input_priority == rhs.m_input_priority &&
+                lhs.m_output_priority == rhs.m_output_priority;
+        }
 
-        std::string recipe;
-        std::string underground_type;   // type of underground "input" or "output"
-        std::string input_priority;     // "left" or "right"
-        std::string output_priority;    // "left" or "right"
+        inline const auto &GetType() const { return m_type; }
+        inline void SetType(const std::string &type_) { m_type = type_; }
+
+        inline const auto &GetName() const { return m_name; }
+        void SetName(const std::string &name_);
+
+        inline const auto &GetPosition() const { return m_position; }
+        inline void SetPosition(const MapPosition &position_) {
+            m_position = position_;
+            UpdateBoundingBox();
+        }
+
+        inline const auto &GetDirection() const { return m_direction; }
+        inline void SetDirection(Direction direction_) {
+            m_direction = direction_;
+            UpdateBoundingBox();
+        }
+
+        inline const auto &GetMirror() const { return m_mirror; }
+        inline void SetMirror(bool mirror_) { m_mirror = mirror_; }
+
+        inline const auto &GetRecipe() const { return m_recipe; }
+        inline void SetRecipe(const std::string &recipe_) { m_recipe = recipe_; }
+
+        inline const auto &GetUndergroundType() const { return m_underground_type; }
+        inline void SetUndergroundType(const std::string &underground_type_) { m_underground_type = underground_type_; }
+
+        inline const auto &GetInputPriority() const { return m_input_priority; }
+        inline void SetInputPriority(const std::string &input_priority_) { m_input_priority = input_priority_; }
+
+        inline const auto &GetOutputPriority() const { return m_output_priority; }
+        inline void SetOutputPriority(const std::string &output_priority_) { m_output_priority = output_priority_; }
+
+        inline const auto &GetBoundingBox() const { return m_bounding_box; }
+        inline const auto &GetPrototype() const { return *m_prototype; }
+
+    private:
+        friend void to_json(json &j, const Entity &e);
+        friend void from_json(const json &j, Entity &e);
+
+        void UpdateBoundingBox() {
+            m_bounding_box = (*m_prototype)["collision_box"].get<Area>().Rotate(m_direction) + m_position;
+        }
+
+        const json *m_prototype = nullptr;
+        Area m_bounding_box;
+
+        std::string m_type;
+        std::string m_name;
+        MapPosition m_position;
+        Direction m_direction = Direction::NORTH;
+        bool m_mirror = false;
+
+        std::string m_recipe;
+        std::string m_underground_type;   // type of underground "input" or "output"
+        std::string m_input_priority;     // "left" or "right"
+        std::string m_output_priority;    // "left" or "right"
     };
     using UEntity = std::unique_ptr<Entity>;
     using SEntity = std::shared_ptr<Entity>;
 
-    NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Entity,
-        type,
-        name,
-        position,
-        direction,
-        mirror,
-        valid,
-        bounding_box,
-        recipe,
-        underground_type,
-        input_priority,
-        output_priority
-    )
+    void to_json(json &j, const Entity &e);
+    void from_json(const json &j, Entity &e);
 
     struct Blueprint {
         std::vector<Entity> entities;

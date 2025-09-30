@@ -146,8 +146,7 @@ API.AddRequestHandler("FindEntitiesFiltered", function (request)
             type = entity.type,
             name = entity.name,
             position = entity.position,
-            direction = entity.direction,
-            bounding_box = entity.bounding_box
+            direction = entity.direction
         })
     end
 

@@ -24,34 +24,38 @@ namespace ComputerPlaysFactorio {
             OnReady();
         });
 
+        m_instance.RegisterEvent("PlayerMoved", [this](const json &event) {
+            m_map_data.SetPlayerPosition(event["data"].get<MapPosition>(), false); 
+        });
+
         m_instance.RegisterEvent("AddEntities", [this](const json &event) {
             auto entities = event["data"].get<std::vector<Entity>>();
             for (const auto &entity : entities) {
-                m_map_data.AddEntity(entity);
+                m_map_data.AddEntity(entity, false);
             }
         });
 
         m_instance.RegisterEvent("RemoveEntities", [this](const json &event) {
             auto entities = event["data"].get<std::vector<std::tuple<std::string, MapPosition>>>();
             for (const auto &entity : entities) {
-                m_map_data.RemoveEntity(std::get<0>(entity), std::get<1>(entity));
+                m_map_data.RemoveEntity(std::get<0>(entity), std::get<1>(entity), false);
             }
         });
 
         m_instance.RegisterEvent("ChunkGenerated", [this](const json &event) {
             auto pos = event["data"].get<MapPosition>();
-            m_map_data.ChunkGenerated(pos);
+            m_map_data.ChunkGenerated(pos, false);
         });
 
         m_instance.RegisterEvent("SetTiles", [this](const json &event) {
             auto tiles = event["data"].get<std::vector<std::tuple<MapPosition, TileType>>>();
             for (const auto &t : tiles) {
-                m_map_data.SetTile(std::get<0>(t), std::get<1>(t));
+                m_map_data.SetTile(std::get<0>(t), std::get<1>(t), false);
             }
         });
 
         m_instance.RegisterEvent("ExportPathfinderData", [this](const json&) {
-            m_map_data.ExportPathfinderData();
+            m_map_data.ExportPathfinderData(false);
         });
 
         s_burner_bp = DecodeBlueprintStr(s_burner_bp_str);
@@ -142,9 +146,9 @@ namespace ComputerPlaysFactorio {
     }
     
     void Bot::BuildBlueprint(Task &task, const Blueprint &blueprint, const MapPosition &offset, Direction direction, bool mirror) {
-        const MapPosition center = ((blueprint.center.Rotate(direction) + offset) * 2).Round() / 2;
+        const MapPosition center = (blueprint.center.Rotate(direction) + offset).HalfRound();
         const auto comp = [&center](const SEntity &lhs, const SEntity &rhs) {
-            return MapPosition::SqDistance(center, lhs->position) < MapPosition::SqDistance(center, rhs->position);
+            return MapPosition::SqDistance(center, lhs->GetPosition()) < MapPosition::SqDistance(center, rhs->GetPosition());
         };
 
         std::priority_queue<SEntity, std::vector<SEntity>, decltype(comp)> queue(comp);
@@ -157,29 +161,27 @@ namespace ComputerPlaysFactorio {
 
         // First we transform all the entities of the blueprint accordingly to the offset, direction and mirror args.
 
+        m_map_data.NewFork();
+
         for (const auto &e : blueprint.entities) {
             auto copy = std::make_shared<Entity>(e);
-            copy->direction += direction;
-            copy->position = copy->position.Rotate(direction);
-            copy->position += offset;
-            if (mirror) copy->mirror = !copy->mirror;
+            copy->SetDirection(direction);
+            copy->SetPosition(copy->GetPosition().Rotate(direction) + offset);
+            if (mirror) copy->SetMirror(!copy->GetMirror());
 
             queue.push(copy);
             entities.push_back(copy);
+            m_map_data.AddEntity(*copy, true);
 
             auto collides_with_player = g_prototypes.HasCollisionMask(e, "player");
             if (!collides_with_player) continue;
 
-            auto &p = g_prototypes.Get(e);
-            if (!p.contains("collision_box")) continue;
-            auto &c = p["collision_box"];
-            Area bounding_box = Area({c[0][0], c[0][1]}, {c[1][0], c[1][1]}) + copy->position;
+            Area bounding_box = copy->GetBoundingBox();
+            const double x2 = HalfFloor(bounding_box.right_bottom.x + character_size);
+            const double y2 = HalfFloor(bounding_box.right_bottom.y + character_size);
 
-            const double x2 = std::floor((bounding_box.right_bottom.x + character_size) * 2) / 2;
-            const double y2 = std::floor((bounding_box.right_bottom.y + character_size) * 2) / 2;
-
-            for (double x1 = std::ceil((bounding_box.left_top.x - character_size) * 2) / 2; x1 <= x2; x1 += 0.5) {
-                for (double y1 = std::ceil((bounding_box.left_top.y - character_size) * 2) / 2; y1 <= y2; y1 += 0.5) {
+            for (double x1 = HalfCeil(bounding_box.left_top.x - character_size); x1 <= x2; x1 += 0.5) {
+                for (double y1 = HalfCeil(bounding_box.left_top.y - character_size); y1 <= y2; y1 += 0.5) {
                     if (!colliders.contains({x1, y1})) {
                         colliders.emplace(x1, y1);
                     }
@@ -207,11 +209,11 @@ namespace ComputerPlaysFactorio {
             std::priority_queue<MapPosition, std::vector<MapPosition>, decltype(comp2)> points(comp2);
             std::unordered_set<MapPosition> visited;
 
-            MapPosition pos = (center * 2).Round() / 2;
-            if (MapPosition::SqDistance(pos, e->position) > sq_reach_distance) {
-                double angle = (pos - e->position).Angle();
-                pos.x = e->position.x + std::round(reach_distance * std::cos(angle) * 2) / 2;
-                pos.y = e->position.y + std::round(reach_distance * std::sin(angle) * 2) / 2;
+            MapPosition pos = center.HalfRound();
+            if (MapPosition::SqDistance(pos, e->GetPosition()) > sq_reach_distance) {
+                double angle = (pos - e->GetPosition()).Angle();
+                pos.x = e->GetPosition().x + HalfRound(reach_distance * std::cos(angle));
+                pos.y = e->GetPosition().y + HalfRound(reach_distance * std::sin(angle));
             }
 
             do {
@@ -221,7 +223,7 @@ namespace ComputerPlaysFactorio {
                         MapPosition neighbor = pos + MapPosition(dx, dy);
                         if (
                             !visited.contains(neighbor) &&
-                            MapPosition::SqDistance(neighbor, e->position) <= sq_reach_distance
+                            MapPosition::SqDistance(neighbor, e->GetPosition()) <= sq_reach_distance
                         ) {
                             points.push(neighbor);
                         }
@@ -231,7 +233,7 @@ namespace ComputerPlaysFactorio {
                 pos = points.top();
                 points.pop();
                 
-                if (!m_map_data.PathfinderCollides(pos) && !colliders.contains(pos)) {
+                if (!m_map_data.PathfinderCollides(pos, true) && !colliders.contains(pos)) {
                     goto Found;
                 }
             } while (!points.empty());
@@ -247,7 +249,7 @@ namespace ComputerPlaysFactorio {
             for (auto &e_ : entities) {
                 if (!e_->valid) continue;
 
-                double d = MapPosition::SqDistance(pos, e_->position);
+                double d = MapPosition::SqDistance(pos, e_->GetPosition());
                 if (d > sq_reach_distance) continue;
                 
                 e_->valid = false;
@@ -294,6 +296,7 @@ namespace ComputerPlaysFactorio {
 
             auto path = FindPath(
                 m_map_data,
+                true,
                 std::get<MapPosition>(first),
                 std::get<MapPosition>(second),
                 std::get<double>(second),
@@ -329,6 +332,7 @@ namespace ComputerPlaysFactorio {
             auto &current_waypoint = waypoints[current_idx];
             auto join_path = FindPath(
                 m_map_data,
+                true,
                 player_pos,
                 std::get<MapPosition>(current_waypoint),
                 std::get<double>(current_waypoint),
@@ -361,6 +365,8 @@ namespace ComputerPlaysFactorio {
                 current_idx++;
                 if (current_idx == paths.size()) current_idx = 0;
             } while (first_idx != current_idx);
+
+            m_map_data.ValidateAndMergeFork();
         });
     }
 
@@ -369,7 +375,7 @@ namespace ComputerPlaysFactorio {
 
         std::vector<std::tuple<MapPosition, double>> points;
         for (auto &entity : entities) {
-            points.emplace_back(entity.position, mine_distance);
+            points.emplace_back(entity.GetPosition(), mine_distance);
         }
 
         // auto paths = FindMultiPath(m_map_data, {0, 0}, points);

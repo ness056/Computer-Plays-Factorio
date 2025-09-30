@@ -1,10 +1,43 @@
 #include "prototypes.hpp"
 #include "types.hpp"
 
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-
 namespace ComputerPlaysFactorio {
+
+    void Entity::SetName(const std::string &name_) {
+        m_name = name_;
+        if (m_type.empty()) m_prototype = &g_prototypes.GetEntity(m_name);
+        else m_prototype = &g_prototypes.Get(m_type, m_name);
+        UpdateBoundingBox();
+    }
+
+    void to_json(json &j, const Entity &e) {
+        j["type"] = e.m_type;
+        j["name"] = e.m_name;
+        j["position"] = e.m_position;
+        j["direction"] = e.m_direction;
+        j["mirror"] = e.m_mirror;
+        j["recipe"] = e.m_recipe;
+        j["underground_type"] = e.m_underground_type;
+        j["input_priority"] = e.m_input_priority;
+        j["output_priority"] = e.m_output_priority;
+    }
+
+    void from_json(const json &j, Entity &e) {
+        const Entity default_{};
+        e.m_type = !j.is_null() ? j.value("type", default_.m_type) : default_.m_type;
+        e.m_name = !j.is_null() ? j.value("name", default_.m_name) : default_.m_name;
+        e.m_position = !j.is_null() ? j.value("position", default_.m_position) : default_.m_position;
+        e.m_direction = !j.is_null() ? j.value("direction", default_.m_direction) : default_.m_direction;
+        e.m_mirror = !j.is_null() ? j.value("mirror", default_.m_mirror) : default_.m_mirror;
+        e.m_recipe = !j.is_null() ? j.value("recipe", default_.m_recipe) : default_.m_recipe;
+        e.m_underground_type = !j.is_null() ? j.value("underground_type", default_.m_underground_type) : default_.m_underground_type;
+        e.m_input_priority = !j.is_null() ? j.value("input_priority", default_.m_input_priority) : default_.m_input_priority;
+        e.m_output_priority = !j.is_null() ? j.value("output_priority", default_.m_output_priority) : default_.m_output_priority;
+
+        if (e.m_type.empty()) e.m_prototype = &g_prototypes.GetEntity(e.m_name);
+        else e.m_prototype = &g_prototypes.Get(e.m_type, e.m_name);
+        e.UpdateBoundingBox();
+    }
 
     void to_json(json &j, const MapPosition &pos) {
         j["x"] = pos.x;

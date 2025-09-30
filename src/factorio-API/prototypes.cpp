@@ -42,28 +42,26 @@ namespace ComputerPlaysFactorio {
         }
         throw RuntimeErrorF("Not entity prototype with name \"{}\" exists", name);
     }
-    
-    bool FactorioPrototypes::HasFlag(const std::string &type, const std::string &name, const std::string &flag) const {
+
+    bool FactorioPrototypes::HasFlag(const json &prototype, const std::string &flag) const {
         CheckValid();
-        const auto &p = m_prototypes[type][name];
-        if (!p.contains("flags")) return false;
-        for (const auto &f : p["flags"]) {
+        if (!prototype.contains("flags")) return false;
+        for (const auto &f : prototype["flags"]) {
             if (f == flag) return true;
         }
         return false;
     }
 
-    bool FactorioPrototypes::HasCollisionMask(const std::string &type, const std::string &name, const std::string &mask) const {
+    bool FactorioPrototypes::HasCollisionMask(const json &prototype, const std::string &mask) const {
         CheckValid();
-        const auto &p_masks = m_prototypes[type][name];
-        if (p_masks.contains("collision_mask")) {
-            return p_masks["collision_mask"]["layers"].contains(mask);
+        if (prototype.contains("collision_mask")) {
+            return prototype["collision_mask"]["layers"].contains(mask);
         }
 
         const auto &default_masks = m_prototypes["utility-constants"]["default"]["default_collision_masks"];
-        if (!default_masks.contains(type)) return false;
+        if (!default_masks.contains(prototype["type"])) return false;
 
-        return default_masks[type]["layers"].contains(mask);
+        return default_masks[prototype["type"]]["layers"].contains(mask);
     }
 
     void FactorioPrototypes::CheckValid() const {
