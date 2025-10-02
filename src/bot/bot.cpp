@@ -29,10 +29,10 @@ namespace ComputerPlaysFactorio {
             m_map_data.SetPlayerPosition(event["data"].get<MapPosition>(), false); 
         });
 
-        m_instance.RegisterEvent("AddEntities", [this](const json &event) {
+        m_instance.RegisterEvent("EntityAutoPlace", [this](const json &event) {
             auto entities = event["data"].get<std::vector<Entity>>();
             for (const auto &entity : entities) {
-                m_map_data.AddEntity(entity, false);
+                m_map_data.AddEntity(entity, false, true);
             }
         });
 
@@ -194,7 +194,7 @@ namespace ComputerPlaysFactorio {
         while (!queue.empty()) {
             auto &t = queue.top();
             if (!std::get<bool>(*t)) {
-            queue.pop();
+                queue.pop();
                 continue;
             }
             auto &entity = std::get<Entity>(*t);

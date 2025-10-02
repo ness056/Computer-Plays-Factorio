@@ -32,121 +32,22 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
         end
     end
 
-    API.InvokeEvent("AddEntities", filtered_entities)
+    API.InvokeEvent("EntityAutoPlace", filtered_entities)
 
     local tiles = surface.find_tiles_filtered{area = event.area}
     local t = {}
     for k, tile in pairs(tiles) do
+        local collides = prototypes.tile[tile.name].collision_mask.layers["player"]
+        if not collides then goto continue end
+
         table.insert(t, {
             tile.position,
-            prototypes.tile[tile.name].collision_mask.layers["player"] and TileType.WATER or TileType.NORMAL
+            TileType.WATER
         })
     end
 
     API.InvokeEvent("SetTiles", t)
-end)
-
----@param entity LuaEntity
-local function EntityBuilt(entity)
-    API.InvokeEvent("AddEntities", {{
-        name = entity.name,
-        position = entity.position,
-        direction = entity.direction,
-        collides_with_player = entity.prototype.collision_mask.layers["player"] or false,
-        placeable_off_grid = entity.has_flag("placeable-off-grid")
-    }})
-end
-
----@param event EventData.on_built_entity
-Event.OnEvent(defines.events.on_built_entity, function (event)
-    EntityBuilt(event.entity)
-end)
-
----@param event EventData.on_entity_cloned
-Event.OnEvent(defines.events.on_entity_cloned, function (event)
-    EntityBuilt(event.destination)
-end)
-
----@param event EventData.on_robot_built_entity
-Event.OnEvent(defines.events.on_robot_built_entity, function (event)
-    EntityBuilt(event.entity)
-end)
-
----@param entity LuaEntity
-local function EntityDestroyed(entity)
-    API.InvokeEvent("RemoveEntities", {{
-        entity.name,
-        entity.position
-    }})
-end
-
----@param event EventData.on_player_mined_entity
-Event.OnEvent(defines.events.on_player_mined_entity, function (event)
-    EntityDestroyed(event.entity)
-end)
-
----@param event EventData.on_robot_mined_entity
-Event.OnEvent(defines.events.on_robot_mined_entity, function (event)
-    EntityDestroyed(event.entity)
-end)
-
----@param event EventData.on_entity_died
-Event.OnEvent(defines.events.on_entity_died, function (event)
-    EntityDestroyed(event.entity)
-end)
-
----@param event EventData.script_raised_set_tiles
-Event.OnEvent(defines.events.script_raised_set_tiles, function (event)
-    local t = {}
-    for k, tile in pairs(event.tiles) do
-        table.insert(t, {
-            tile.position,
-            prototypes.tile[tile.name].collision_mask.layers["player"] and TileType.WATER or TileType.NORMAL
-        })
-    end
-
-    API.InvokeEvent("SetTiles", t)
-end)
-
----@param pos MapPosition.0
----@param tileProto LuaTilePrototype
-local function SetTile(pos, tileProto)
-    API.InvokeEvent("SetTiles", {
-        {
-            pos,
-            tileProto.collision_mask.layers["player"] and TileType.WATER or TileType.NORMAL
-        }
-    })
-end
-
----@param event EventData.on_player_built_tile
-Event.OnEvent(defines.events.on_player_built_tile, function (event)
-    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tile)
-end)
-
----@param event EventData.on_robot_built_tile
-Event.OnEvent(defines.events.on_robot_built_tile, function (event)
-    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tile)
-end)
-
----@param event EventData.on_space_platform_built_tile
-Event.OnEvent(defines.events.on_space_platform_built_tile, function (event)
-    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tile)
-end)
-
----@param event EventData.on_player_mined_tile
-Event.OnEvent(defines.events.on_player_mined_tile, function (event)
-    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tiles[1].old_tile)
-end)
-
----@param event EventData.on_robot_mined_tile
-Event.OnEvent(defines.events.on_robot_mined_tile, function (event)
-    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tiles[1].old_tile)
-end)
-
----@param event EventData.on_space_platform_mined_tile
-Event.OnEvent(defines.events.on_space_platform_mined_tile, function (event)
-    SetTile(event.tiles[1].position --[[@as MapPosition.0]], event.tiles[1].old_tile)
+    ::continue::
 end)
 
 local function EvaluatePath()

@@ -29,6 +29,17 @@ namespace ComputerPlaysFactorio {
             return m_map_data;
         }
 
+        // Instructions
+
+        std::future<json> Build(const Entity&);
+        std::future<json> Mine(const MapPosition&);
+        template <class T>
+        std::future<json> SetEntityProperty(const std::string &entity_name, const MapPosition&, const std::string &property, T value);
+        template <class T>
+        inline std::future<json> SetEntityProperty(const Entity &entity, const std::string &property, T value) {
+            SetEntityProperty(entity.name, entity.position, property, value);
+        }
+
         // Subtasks
 
         void BuildBlueprint(Task &task, const Blueprint &bp, const MapPosition &offset, Direction, bool mirror);
@@ -70,6 +81,16 @@ namespace ComputerPlaysFactorio {
         // static inline constexpr auto s_test_bp_str = R"(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)";
         static inline Blueprint s_test_bp;
     };
+
+    template <class T>
+    std::future<json> Bot::SetEntityProperty(const std::string &entity_name, const MapPosition &pos, const std::string &property, T value) {
+        auto future = m_instance.Request("SetEntityProperty", {
+            {"entity", entity_name},
+            {"position", pos},
+            {"property", property},
+            {"value", value}
+        });
+    }
 
     class BotFactory {
     public:
