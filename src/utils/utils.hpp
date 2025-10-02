@@ -44,15 +44,15 @@ namespace ComputerPlaysFactorio {
         throw;
     }
 
-    double HalfFloor(double x) {
+    inline double HalfFloor(double x) {
         return std::floor(x * 2) / 2;
     }
 
-    double HalfCeil(double x) {
+    inline double HalfCeil(double x) {
         return std::ceil(x * 2) / 2;
     }
 
-    double HalfRound(double x) {
+    inline double HalfRound(double x) {
         return std::round(x * 2) / 2;
     }
 

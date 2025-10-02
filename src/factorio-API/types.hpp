@@ -161,6 +161,22 @@ namespace ComputerPlaysFactorio {
             }
         }
 
+        constexpr MapPosition Floor() const {
+            return MapPosition(std::floor(x), std::floor(y));
+        }
+
+        constexpr MapPosition HalfFloor() const {
+            return MapPosition(ComputerPlaysFactorio::HalfFloor(x), ComputerPlaysFactorio::HalfFloor(y));
+        }
+
+        constexpr MapPosition Ceil() const {
+            return MapPosition(std::ceil(x), std::ceil(y));
+        }
+
+        constexpr MapPosition HalfCeil() const {
+            return MapPosition(ComputerPlaysFactorio::HalfCeil(x), ComputerPlaysFactorio::HalfCeil(y));
+        }
+
         constexpr MapPosition Round() const {
             return MapPosition(std::round(x), std::round(y));
         }
@@ -272,6 +288,8 @@ namespace ComputerPlaysFactorio {
         WATER
     };
 
+    struct Blueprint;
+
     class Entity {
     public:
         friend constexpr bool operator==(const Entity &lhs, const Entity &rhs) {
@@ -325,9 +343,13 @@ namespace ComputerPlaysFactorio {
     private:
         friend void to_json(json &j, const Entity &e);
         friend void from_json(const json &j, Entity &e);
+        friend Blueprint DecodeBlueprintStr(const std::string &str);
 
         void UpdateBoundingBox() {
-            m_bounding_box = (*m_prototype)["collision_box"].get<Area>().Rotate(m_direction) + m_position;
+            const auto &proto = *m_prototype;
+            if (proto.contains("collision_box")) {
+                m_bounding_box = (*m_prototype)["collision_box"].get<Area>().Rotate(m_direction) + m_position;
+            }
         }
 
         const json *m_prototype = nullptr;

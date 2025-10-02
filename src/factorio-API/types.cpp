@@ -5,7 +5,10 @@ namespace ComputerPlaysFactorio {
 
     void Entity::SetName(const std::string &name_) {
         m_name = name_;
-        if (m_type.empty()) m_prototype = &g_prototypes.GetEntity(m_name);
+        if (m_type.empty()) {
+            m_prototype = &g_prototypes.GetEntity(m_name);
+            m_type = (*m_prototype)["type"].get<std::string>();
+        }
         else m_prototype = &g_prototypes.Get(m_type, m_name);
         UpdateBoundingBox();
     }
@@ -34,7 +37,10 @@ namespace ComputerPlaysFactorio {
         e.m_input_priority = !j.is_null() ? j.value("input_priority", default_.m_input_priority) : default_.m_input_priority;
         e.m_output_priority = !j.is_null() ? j.value("output_priority", default_.m_output_priority) : default_.m_output_priority;
 
-        if (e.m_type.empty()) e.m_prototype = &g_prototypes.GetEntity(e.m_name);
+        if (e.m_type.empty()) {
+            e.m_prototype = &g_prototypes.GetEntity(e.m_name);
+            e.m_type = (*e.m_prototype)["type"].get<std::string>();
+        }
         else e.m_prototype = &g_prototypes.Get(e.m_type, e.m_name);
         e.UpdateBoundingBox();
     }
@@ -136,19 +142,23 @@ namespace ComputerPlaysFactorio {
             auto pos = e["position"].get<MapPosition>();
             blueprint.center += pos;
 
-            blueprint.entities.emplace_back(
-                p["type"],
-                e["name"].get<std::string>(),
-                pos,
-                e.contains("direction") ? e["direction"].get<Direction>() : Direction::NORTH,
-                e.contains("mirror") ? e["mirror"].get<bool>() : false,
-                true,
-                p.contains("collision_box") ? p["collision_box"].get<Area>() + pos : Area{},
-                e.contains("recipe") ? e["recipe"].get<std::string>() : "",
-                e.contains("type") ? e["type"].get<std::string>() : "",
-                e.contains("input_priority") ? e["input_priority"].get<std::string>() : "",
-                e.contains("output_priority") ? e["output_priority"].get<std::string>() : ""
-            );
+            auto &entity = blueprint.entities.emplace_back();
+            entity.m_type = p["type"].get<std::string>();
+            entity.m_name = e["name"].get<std::string>();
+            entity.m_position = pos;
+            entity.m_direction = e.contains("direction") ? e["direction"].get<Direction>() : Direction::NORTH;
+            entity.m_mirror = e.contains("mirror") ? e["mirror"].get<bool>() : false;
+            entity.m_recipe = e.contains("recipe") ? e["recipe"].get<std::string>() : "";
+            entity.m_underground_type = e.contains("type") ? e["type"].get<std::string>() : "";
+            entity.m_input_priority = e.contains("input_priority") ? e["input_priority"].get<std::string>() : "";
+            entity.m_output_priority = e.contains("output_priority") ? e["output_priority"].get<std::string>() : "";
+
+            if (entity.m_type.empty()) {
+                entity.m_prototype = &g_prototypes.GetEntity(entity.m_name);
+                entity.m_type = (*entity.m_prototype)["type"].get<std::string>();
+            }
+            else entity.m_prototype = &g_prototypes.Get(entity.m_type, entity.m_name);
+            entity.UpdateBoundingBox();
         }
 
         blueprint.center /= (double)n_entity;

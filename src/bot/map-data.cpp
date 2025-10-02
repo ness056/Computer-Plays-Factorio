@@ -16,11 +16,13 @@ namespace ComputerPlaysFactorio {
     }
 
     void MapData::ValidateAndMergeFork() {
+        std::scoped_lock lock(m_mutex);
+
         const auto &fork = m_forks.front();
 
         if (!fork.position_set) ForkValidationFailed();
 
-        if (fork.final_player_position.HalfRound() != m_player_position.HalfRound()) {
+        if ((fork.final_player_position - m_player_position).Round() != MapPosition(0, 0)) {
             ForkValidationFailed();
         }
 
@@ -36,7 +38,7 @@ namespace ComputerPlaysFactorio {
             if (!m_chunks.contains(chunk_pos)) {
                 ForkValidationFailed();
             }
-            const auto &other_chunk = m_chunks[chunk_pos];
+            const auto &other_chunk = m_chunks.at(chunk_pos);
             
             for (const auto &entity : chunk.entities) {
                 for (const auto &other_entity : other_chunk.entities) {
@@ -51,6 +53,8 @@ namespace ComputerPlaysFactorio {
     }
 
     void MapData::DestroyForks() {
+        std::scoped_lock lock(m_mutex);
+
         while (!m_forks.empty()) {
             m_forks.pop();
         }
@@ -59,11 +63,20 @@ namespace ComputerPlaysFactorio {
         m_colliders_fork_tile.clear();
     }
 
-    const MapPosition &MapData::GetPlayerPosition(bool use_fork) const {
-        return use_fork ? GetFork().final_player_position : m_player_position;
+    MapPosition MapData::GetPlayerPosition(bool use_fork) const {
+        std::scoped_lock lock(m_mutex);
+
+        if (!use_fork) return m_player_position;
+        else {
+            const auto &fork = GetFork();
+            if (fork.position_set) return fork.final_player_position;
+            else throw RuntimeErrorF("Final player position not set.");
+        }
     }
 
     void MapData::SetPlayerPosition(const MapPosition &pos, bool use_fork) {
+        std::scoped_lock lock(m_mutex);
+
         if (use_fork) {
             auto &fork = GetFork();
             fork.final_player_position = pos;
@@ -74,7 +87,7 @@ namespace ComputerPlaysFactorio {
     }
 
     void MapData::AddEntity(const Entity &entity, bool use_fork, bool is_auto_place) {
-        std::scoped_lock lock(m_mutex);
+        std::unique_lock lock(m_mutex);
 
         auto &chunks = use_fork ? GetFork().chunks : m_chunks;
 
@@ -102,9 +115,14 @@ namespace ComputerPlaysFactorio {
             for (double y1 = HalfCeil(entity.GetBoundingBox().left_top.y - n); y1 <= y2; y1 += 0.5) {
                 if (!collisions.contains({x1, y1})) {
                     collisions.emplace(x1, y1);
+                    if (!use_fork && is_auto_place && !ForksEmpty()) {
+                        m_colliders_fork_entity.emplace(x1, y1);
+                    }
                 }
             }
         }
+
+        lock.unlock();
     }
 
     void MapData::RemoveEntity(const std::string &name, const MapPosition &pos, bool use_fork) {
@@ -147,6 +165,21 @@ namespace ComputerPlaysFactorio {
                 }
             }
         }
+    }
+
+    std::expected<Entity, bool> MapData::FindEntity(const std::string &name, const MapPosition &pos, bool use_fork) const {
+        std::scoped_lock lock(m_mutex);
+
+        auto chunk_pos = pos.ChunkPosition();
+        const auto &chunks = use_fork ? GetFork().chunks : m_chunks;
+
+        if (!chunks.contains(chunk_pos)) return;
+        const auto &entities = chunks.at(chunk_pos).entities;
+        for (const auto &entity : entities) {
+            if (entity.GetName() == name && entity.GetPosition() == pos) return entity;
+        }
+
+        return std::unexpected(false);
     }
 
     TileType MapData::GetTile(const MapPosition &pos, bool use_fork) const {

@@ -12,7 +12,6 @@ namespace ComputerPlaysFactorio {
         bool use_fork,
         const MapPosition &start,
         const MapPosition &goal,
-        double radius,
-        const std::unordered_set<MapPosition> *additional_colliders = nullptr
+        double radius
     );
 }

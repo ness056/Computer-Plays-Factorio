@@ -3,6 +3,7 @@
 #include <queue>
 
 #include "../algorithms/path-finder.hpp"
+#include "../algorithms/TSP.hpp"
 
 namespace ComputerPlaysFactorio {
 
@@ -146,47 +147,37 @@ namespace ComputerPlaysFactorio {
     }
     
     void Bot::BuildBlueprint(Task &task, const Blueprint &blueprint, const MapPosition &offset, Direction direction, bool mirror) {
+        using EntityTuple = std::tuple<Entity, bool>;
+        using SEntityTuple = std::shared_ptr<EntityTuple>;
+
         const MapPosition center = (blueprint.center.Rotate(direction) + offset).HalfRound();
-        const auto comp = [&center](const SEntity &lhs, const SEntity &rhs) {
-            return MapPosition::SqDistance(center, lhs->GetPosition()) < MapPosition::SqDistance(center, rhs->GetPosition());
+        const auto comp = [&center](const SEntityTuple &lhs, const SEntityTuple &rhs) {
+            return
+                MapPosition::SqDistance(center, std::get<0>(*lhs).GetPosition()) <
+                MapPosition::SqDistance(center, std::get<0>(*rhs).GetPosition());
         };
 
-        std::priority_queue<SEntity, std::vector<SEntity>, decltype(comp)> queue(comp);
-        std::vector<SEntity> entities;
-        std::unordered_set<MapPosition> colliders;
+        std::priority_queue<SEntityTuple, std::vector<SEntityTuple>, decltype(comp)> queue(comp);
+        std::vector<SEntityTuple> entities;
 
-        const double character_size = g_prototypes.Get("character", "character")["collision_box"][1][0];
         const double reach_distance = g_prototypes.Get("character", "character")["reach_distance"];
         const double sq_reach_distance = reach_distance * reach_distance;
 
         // First we transform all the entities of the blueprint accordingly to the offset, direction and mirror args.
 
+        auto starting_position = m_map_data.GetPlayerPosition(m_map_data.ForksEmpty() ? false : true);
         m_map_data.NewFork();
 
         for (const auto &e : blueprint.entities) {
-            auto copy = std::make_shared<Entity>(e);
-            copy->SetDirection(direction);
-            copy->SetPosition(copy->GetPosition().Rotate(direction) + offset);
-            if (mirror) copy->SetMirror(!copy->GetMirror());
+            auto copy = std::make_shared<EntityTuple>(e, true);
+            auto &entity = std::get<Entity>(*copy);
+            entity.SetDirection(direction + entity.GetDirection());
+            entity.SetPosition(entity.GetPosition().Rotate(direction) + offset);
+            if (mirror) entity.SetMirror(!entity.GetMirror());
 
             queue.push(copy);
             entities.push_back(copy);
-            m_map_data.AddEntity(*copy, true);
-
-            auto collides_with_player = g_prototypes.HasCollisionMask(e, "player");
-            if (!collides_with_player) continue;
-
-            Area bounding_box = copy->GetBoundingBox();
-            const double x2 = HalfFloor(bounding_box.right_bottom.x + character_size);
-            const double y2 = HalfFloor(bounding_box.right_bottom.y + character_size);
-
-            for (double x1 = HalfCeil(bounding_box.left_top.x - character_size); x1 <= x2; x1 += 0.5) {
-                for (double y1 = HalfCeil(bounding_box.left_top.y - character_size); y1 <= y2; y1 += 0.5) {
-                    if (!colliders.contains({x1, y1})) {
-                        colliders.emplace(x1, y1);
-                    }
-                }
-            }
+            m_map_data.AddEntity(entity, true);
         }
 
         // In order to find a path where the bot will be at least once in building range of every entities,
@@ -197,11 +188,16 @@ namespace ComputerPlaysFactorio {
         // building path.
 
         // Find the list of points
-        std::vector<std::tuple<MapPosition, std::vector<SEntity>, double>> waypoints;
+        std::vector<std::tuple<MapPosition, std::vector<Entity>, double>> waypoints;
+        waypoints.push_back({starting_position, {}, 0});
+
         while (!queue.empty()) {
-            auto e = queue.top();
+            auto &t = queue.top();
+            if (!std::get<bool>(*t)) {
             queue.pop();
-            if (!e->valid) continue;
+                continue;
+            }
+            auto &entity = std::get<Entity>(*t);
 
             const auto comp2 = [&center](const MapPosition &lhs, const MapPosition &rhs) {
                 return MapPosition::SqDistance(center, lhs) < MapPosition::SqDistance(center, rhs);
@@ -210,10 +206,10 @@ namespace ComputerPlaysFactorio {
             std::unordered_set<MapPosition> visited;
 
             MapPosition pos = center.HalfRound();
-            if (MapPosition::SqDistance(pos, e->GetPosition()) > sq_reach_distance) {
-                double angle = (pos - e->GetPosition()).Angle();
-                pos.x = e->GetPosition().x + HalfRound(reach_distance * std::cos(angle));
-                pos.y = e->GetPosition().y + HalfRound(reach_distance * std::sin(angle));
+            if (MapPosition::SqDistance(pos, entity.GetPosition()) > sq_reach_distance) {
+                double angle = (pos - entity.GetPosition()).Angle();
+                pos.x = entity.GetPosition().x + HalfRound(reach_distance * std::cos(angle));
+                pos.y = entity.GetPosition().y + HalfRound(reach_distance * std::sin(angle));
             }
 
             do {
@@ -223,7 +219,7 @@ namespace ComputerPlaysFactorio {
                         MapPosition neighbor = pos + MapPosition(dx, dy);
                         if (
                             !visited.contains(neighbor) &&
-                            MapPosition::SqDistance(neighbor, e->GetPosition()) <= sq_reach_distance
+                            MapPosition::SqDistance(neighbor, entity.GetPosition()) <= sq_reach_distance
                         ) {
                             points.push(neighbor);
                         }
@@ -233,7 +229,7 @@ namespace ComputerPlaysFactorio {
                 pos = points.top();
                 points.pop();
                 
-                if (!m_map_data.PathfinderCollides(pos, true) && !colliders.contains(pos)) {
+                if (!m_map_data.PathfinderCollides(pos, true)) {
                     goto Found;
                 }
             } while (!points.empty());
@@ -243,129 +239,72 @@ namespace ComputerPlaysFactorio {
             Found:
 
             waypoints.push_back({pos, {}, 0});
-            auto &vec = std::get<std::vector<SEntity>>(waypoints.back());
+            auto &vec = std::get<std::vector<Entity>>(waypoints.back());
             auto &max_distance = std::get<double>(waypoints.back());
 
-            for (auto &e_ : entities) {
-                if (!e_->valid) continue;
+            for (auto &t_ : entities) {
+                auto &valid = std::get<bool>(*t_);
+                if (!valid) continue;
+                auto &entity_ = std::get<Entity>(*t_);
 
-                double d = MapPosition::SqDistance(pos, e_->GetPosition());
+                double d = MapPosition::SqDistance(pos, entity_.GetPosition());
                 if (d > sq_reach_distance) continue;
                 
-                e_->valid = false;
+                valid = false;
                 if (max_distance < d) max_distance = d;
-                vec.push_back(e_);
+                vec.emplace_back(std::move(entity_));
             }
 
             max_distance = reach_distance - std::sqrt(max_distance);
+
+            queue.pop();
         }
 
         // TSP
-        std::vector<std::tuple<MapPosition, std::vector<SEntity>, double>> waypoints_final;
-        if (waypoints.empty()) throw "TODO";
-        auto &p = waypoints_final.emplace_back(std::move(waypoints.back()));
-        MapPosition prev_pos = std::get<MapPosition>(p);
-        waypoints.pop_back();
-
-        while (!waypoints.empty()) {
-            double min_distance = INFINITY;
-            std::vector<std::tuple<MapPosition, std::vector<SEntity>, double>>::iterator min_distance_it;
-
-            auto it = waypoints.begin();
-            for (; it != waypoints.end(); it++) {
-                double d = MapPosition::SqDistance(prev_pos, std::get<MapPosition>(*it));
-                if (d < min_distance) {
-                    min_distance = d;
-                    min_distance_it = it;
-                }
-            }
-
-            prev_pos = std::get<MapPosition>(*min_distance_it);
-            waypoints_final.emplace_back(std::move(*min_distance_it));
-            waypoints.erase(min_distance_it);
-        }
+        TSP<std::tuple<MapPosition, std::vector<Entity>, double>>
+            (waypoints, [](const std::tuple<MapPosition, std::vector<Entity>, double> &e) -> const MapPosition& {
+                return std::get<MapPosition>(e);
+            }, false
+        );
 
         // Find actual paths
         std::vector<Path> paths;
-        paths.resize(waypoints_final.size());
+        paths.reserve(waypoints.size());
 
-        auto end = waypoints_final.end();
-        for (int i = 0; i < waypoints_final.size(); i++) {
-            const auto &first = waypoints_final[i];
-            const auto &second = i + 1 == waypoints_final.size() ? waypoints_final[0] : waypoints_final[i + 1];
+        for (int i = 0; i < waypoints.size() - 1; i++) {
+            const auto &first = waypoints[i];
+            const auto &second = waypoints[i + 1];
 
             auto path = FindPath(
                 m_map_data,
                 true,
                 std::get<MapPosition>(first),
                 std::get<MapPosition>(second),
-                std::get<double>(second),
-                &colliders
+                std::get<double>(second)
             );
             if (!path) throw "TODO";
 
-            paths[i + 1 == waypoints_final.size() ? 0 : i + 1] = std::move(path.value());
+            paths.emplace_back(std::move(path.value()));
         }
 
+        m_map_data.SetPlayerPosition(paths.back().back(), true);
+
         task.QueueInstruction([
-            this, waypoints = std::move(waypoints_final),
-            paths = std::move(paths), colliders = std::move(colliders)
+            this, waypoints = std::move(waypoints),
+            paths = std::move(paths)
         ](FactorioInstance &instance) {
-            auto player_pos_futur = instance.PlayerPosition();
-            player_pos_futur.wait();
-            auto player_pos_r = player_pos_futur.get();
-
-            if (player_pos_r["error"] != RequestError::SUCCESS) throw "TODO";
-
-            auto player_pos = player_pos_r.at("data").get<MapPosition>();
-            double min_distance = INFINITY;
-            size_t current_idx = 0;
-
-            for (size_t i = 0; i < waypoints.size(); i++) {
-                double d = MapPosition::SqDistance(player_pos, std::get<MapPosition>(waypoints[i]));
-                if (d < min_distance) {
-                    min_distance = d;
-                    current_idx = i;
-                }
-            }
-
-            auto &current_waypoint = waypoints[current_idx];
-            auto join_path = FindPath(
-                m_map_data,
-                true,
-                player_pos,
-                std::get<MapPosition>(current_waypoint),
-                std::get<double>(current_waypoint),
-                &colliders
-            );
-            if (!join_path) throw;
-
-            {
-                auto walk_futur = instance.Request("WalkAndStay", join_path.value());
-                for (auto entity : std::get<std::vector<SEntity>>(current_waypoint)) {
-                    instance.Request("Build", *entity);
+            for (int i = 0; i < paths.size(); i++) {
+                auto walk_futur = instance.Request("WalkAndStay", paths[i]);
+                auto &waypoint = waypoints[i + 1];
+                for (auto entity : std::get<std::vector<Entity>>(waypoint)) {
+                    instance.Request("Build", entity);
                 }
                 instance.Request("WaitAllRangedRequests").wait();
                 instance.Request("WalkFinishAndStop").wait();
                 walk_futur.wait();
             }
 
-            auto first_idx = current_idx;
-            current_idx++;
-            do {
-                auto walk_futur = instance.Request("WalkAndStay", paths[current_idx]);
-                auto &waypoint = waypoints[current_idx];
-                for (auto entity : std::get<std::vector<SEntity>>(waypoint)) {
-                    instance.Request("Build", *entity);
-                }
-                instance.Request("WaitAllRangedRequests").wait();
-                instance.Request("WalkFinishAndStop").wait();
-                walk_futur.wait();
-
-                current_idx++;
-                if (current_idx == paths.size()) current_idx = 0;
-            } while (first_idx != current_idx);
-
+            instance.Request("PauseToggle");
             m_map_data.ValidateAndMergeFork();
         });
     }

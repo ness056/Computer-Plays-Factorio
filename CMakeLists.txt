@@ -37,6 +37,7 @@ add_executable(${PROJECT_NAME}
     src/factorio-API/types.cpp
     src/algorithms/path-finder.hpp
     src/algorithms/path-finder.cpp
+    src/algorithms/TSP.hpp
     src/utils/thread.hpp
     src/utils/thread.cpp
     src/utils/logging.hpp

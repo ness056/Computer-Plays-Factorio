@@ -5,6 +5,7 @@
 #include <map>
 #include <list>
 #include <mutex>
+#include <expected>
 
 #include "../factorio-API/factorio-API.hpp"
 #include "../factorio-API/prototypes.hpp"
@@ -26,15 +27,19 @@ namespace ComputerPlaysFactorio {
         inline void NewFork() {
             m_forks.emplace();
         }
+        inline bool ForksEmpty() const {
+            return m_forks.empty();
+        }
         void ValidateAndMergeFork();
         void DestroyForks();
 
-        const MapPosition &GetPlayerPosition(bool use_fork) const;
+        MapPosition GetPlayerPosition(bool use_fork) const;
         void SetPlayerPosition(const MapPosition &pos, bool use_fork);
         
         // is_auto_place is ignored if use_fork = true
         void AddEntity(const Entity&, bool use_fork, bool is_auto_place = false);
         void RemoveEntity(const std::string &name, const MapPosition &pos, bool use_fork);
+        std::expected<Entity, bool> FindEntity(const std::string &name, const MapPosition &pos, bool use_fork) const;
 
         TileType GetTile(const MapPosition &pos, bool use_fork) const;
         void SetTile(MapPosition pos, TileType tile, bool use_fork);
@@ -55,9 +60,11 @@ namespace ComputerPlaysFactorio {
         };
 
         inline const Fork &GetFork() const {
+            if (ForksEmpty()) throw RuntimeErrorF("No fork exists.");
             return m_forks.back();
         }
         inline Fork &GetFork() {
+            if (ForksEmpty()) throw RuntimeErrorF("No fork exists.");
             return m_forks.back();
         }
 

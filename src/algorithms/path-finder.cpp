@@ -36,8 +36,7 @@ namespace ComputerPlaysFactorio {
         bool use_fork,
         const MapPosition &start,
         const MapPosition &goal,
-        double radius,
-        const std::unordered_set<MapPosition> *additional_colliders
+        double radius
     ) {
         assert(start.HalfRound() == start);
         assert(goal.HalfRound() == goal);
@@ -61,9 +60,7 @@ namespace ComputerPlaysFactorio {
 
             for (size_t i = 0; i < c_directions_count; i++) {
                 MapPosition new_pos(current->pos + c_directions[i] * 0.5);
-                if (data.PathfinderCollides(new_pos, use_fork) || closed_set.contains(new_pos) || 
-                    (additional_colliders && additional_colliders->contains(new_pos))
-                ) {
+                if (data.PathfinderCollides(new_pos, use_fork) || closed_set.contains(new_pos)) {
                     continue;
                 }
 
