@@ -4,7 +4,7 @@
 
 namespace ComputerPlaysFactorio {
 
-    class Instruction {
+    class SubTask {
     public:
         using Handler = std::function<void(FactorioInstance&)>;
 
@@ -13,11 +13,11 @@ namespace ComputerPlaysFactorio {
             TASK_END    // Marks the end of a task.
         };
 
-        Instruction(const Handler &handler, Type type = NORMAL) :
+        SubTask(const Handler &handler, Type type = NORMAL) :
             m_handler(handler), m_type(type) {}
 
-        inline void Call(FactorioInstance &instance) const {
-            m_handler(instance);
+        inline void Call(FactorioInstance &sub_task) const {
+            m_handler(sub_task);
         }
 
         inline Type GetType() { return m_type; }
@@ -38,16 +38,16 @@ namespace ComputerPlaysFactorio {
 
     class Task {
     public:
-        Task(std::condition_variable &instruction_cond) : m_instruction_cond(instruction_cond) {}
+        Task(std::condition_variable &sub_task_cond) : m_sub_task_cond(sub_task_cond) {}
 
-        void QueueInstruction(const Instruction::Handler&);
-        Instruction *GetInstruction();
-        void PopInstruction();
-        size_t InstructionCount();
+        void QueueSubTask(const SubTask::Handler&);
+        SubTask *GetSubTask();
+        void PopSubTask();
+        size_t SubTaskCount();
 
     private:
-        std::deque<Instruction> m_instructions;
+        std::deque<SubTask> m_sub_tasks;
         std::mutex m_mutex;
-        std::condition_variable &m_instruction_cond;
+        std::condition_variable &m_sub_task_cond;
     };
 }

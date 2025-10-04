@@ -582,11 +582,37 @@ namespace ComputerPlaysFactorio {
         return promise->get_future();
     }
 
+    void FactorioInstance::RequestPrivate(const std::string &name, const json *data, std::function<void(const json&)> callback) {
+        json j;
+        auto id = s_id++;
+        j["id"] = id;
+        j["name"] = name;
+        if (data) j["data"] = *data;
+
+        if (SendRCON("/request " + j.dump()) != SUCCESS) {
+            callback(json{
+                {"id", id},
+                {"success", false},
+                {"error", RequestError::FACTORIO_NOT_RUNNING}
+            });
+        } else {
+            m_pending_requests[id] = callback;
+        }
+    }
+
     std::future<json> FactorioInstance::Request(const std::string &name) {
         return RequestPrivate(name, nullptr);
     }
 
     std::future<json> FactorioInstance::Request(const std::string &name, const json &data) {
         return RequestPrivate(name, &data);
+    }
+
+    void FactorioInstance::Request(const std::string &name, std::function<void(const json&)> callback) {
+        RequestPrivate(name, nullptr, callback);
+    }
+
+    void FactorioInstance::Request(const std::string &name, const json &data, std::function<void(const json&)> callback) {
+        RequestPrivate(name, &data, callback);
     }
 }

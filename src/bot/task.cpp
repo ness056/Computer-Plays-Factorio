@@ -2,26 +2,26 @@
 
 namespace ComputerPlaysFactorio {
 
-    Instruction *Task::GetInstruction() {
+    SubTask *Task::GetSubTask() {
         std::scoped_lock lock(m_mutex);
-        if (m_instructions.empty()) return nullptr;
-        return &m_instructions.front();
+        if (m_sub_tasks.empty()) return nullptr;
+        return &m_sub_tasks.front();
     }
 
-    void Task::PopInstruction() {
+    void Task::PopSubTask() {
         std::scoped_lock lock(m_mutex);
-        if (m_instructions.empty()) return;
-        m_instructions.pop_front();
+        if (m_sub_tasks.empty()) return;
+        m_sub_tasks.pop_front();
     }
 
-    size_t Task::InstructionCount() {
+    size_t Task::SubTaskCount() {
         std::scoped_lock lock(m_mutex);
-        return m_instructions.size();
+        return m_sub_tasks.size();
     }
 
-    void Task::QueueInstruction(const Instruction::Handler &handler) {
+    void Task::QueueSubTask(const SubTask::Handler &handler) {
         std::scoped_lock lock(m_mutex);
-        m_instructions.emplace_back(handler);
-        m_instruction_cond.notify_all();
+        m_sub_tasks.emplace_back(handler);
+        m_sub_task_cond.notify_all();
     }
 }

@@ -9,6 +9,10 @@ end)
 
 commands.add_command("log-storage", "", function (c)
     log(serpent.block(storage))
+    log("ranged requests: ")
+    for request, _ in pairs(storage.ranged_requests) do
+        log(serpent.line(request))
+    end
 end)
 
 ---@param fn fun(...)

@@ -77,50 +77,50 @@ namespace ComputerPlaysFactorio {
     }
    
     void Bot::Stop() {
-        ClearInstructions();
+        ClearSubTasks();
         m_exit = true;
         m_instance.Stop();
     }
 
-    size_t Bot::InstructionCount() {
-        std::scoped_lock lock(m_instruction_mutex);
+    size_t Bot::SubTaskCount() {
+        std::scoped_lock lock(m_sub_task_mutex);
         size_t sum = 0;
         for (auto &task : m_tasks) {
-            sum += task.InstructionCount();
+            sum += task.SubTaskCount();
         }
         return sum;
     }
 
-    Instruction *Bot::GetInstruction() {
+    SubTask *Bot::GetSubTask() {
         while (true) {
-            std::unique_lock lock(m_instruction_mutex);
+            std::unique_lock lock(m_sub_task_mutex);
             if (!m_tasks.empty()) {
-                auto instruction = m_tasks.front().GetInstruction();
-                if (instruction) return instruction;
+                auto sub_task = m_tasks.front().GetSubTask();
+                if (sub_task) return sub_task;
             }
     
-            m_instruction_cond.wait(lock);
+            m_sub_task_cond.wait(lock);
         }
     }
 
-    void Bot::PopInstruction() {
-        std::scoped_lock lock(m_instruction_mutex);
+    void Bot::PopSubTask() {
+        std::scoped_lock lock(m_sub_task_mutex);
         if (m_tasks.empty()) return;
-        m_tasks.front().PopInstruction();
+        m_tasks.front().PopSubTask();
     }
 
-    void Bot::ClearInstructions() {
-        std::scoped_lock lock(m_instruction_mutex);
+    void Bot::ClearSubTasks() {
+        std::scoped_lock lock(m_sub_task_mutex);
         m_tasks.clear();
     }
 
     Task &Bot::QueueTask() {
-        std::scoped_lock lock(m_instruction_mutex);
-        return m_tasks.emplace_back(m_instruction_cond);
+        std::scoped_lock lock(m_sub_task_mutex);
+        return m_tasks.emplace_back(m_sub_task_cond);
     }
 
     void Bot::PopTask() {
-        std::scoped_lock lock(m_instruction_mutex);
+        std::scoped_lock lock(m_sub_task_mutex);
         m_tasks.pop_front();
     }
 
@@ -135,15 +135,37 @@ namespace ComputerPlaysFactorio {
 
     void Bot::Loop() {
         while(!m_exit) {
-            Instruction *instruction = GetInstruction();
-            if (instruction->GetType() == Instruction::TASK_END) {
+            SubTask *sub_task = GetSubTask();
+            if (sub_task->GetType() == SubTask::TASK_END) {
                 PopTask();
                 continue;
             }
 
-            instruction->Call(m_instance);
-            PopInstruction();
+            sub_task->Call(m_instance);
+            PopSubTask();
         }
+    }
+
+    std::future<json> Bot::Build(const Entity &entity) {
+        auto promise = std::make_shared<std::promise<json>>();
+
+        m_instance.Request("Build", json(entity), [this, promise, entity](const json &j) {
+            m_map_data.AddEntity(entity, false);
+            promise->set_value(j);
+        });
+
+        return promise->get_future();
+    }
+
+    std::future<json> Bot::Mine(const std::string &name, const MapPosition &pos) {
+        auto promise = std::make_shared<std::promise<json>>();
+
+        m_instance.Request("Mine", {{ "position", pos }}, [this, promise, name, pos](const json &j) {
+            m_map_data.RemoveEntity(name, pos, false);
+            promise->set_value(j);
+        });
+
+        return promise->get_future();
     }
     
     void Bot::BuildBlueprint(Task &task, const Blueprint &blueprint, const MapPosition &offset, Direction direction, bool mirror) {
@@ -289,7 +311,7 @@ namespace ComputerPlaysFactorio {
 
         m_map_data.SetPlayerPosition(paths.back().back(), true);
 
-        task.QueueInstruction([
+        task.QueueSubTask([
             this, waypoints = std::move(waypoints),
             paths = std::move(paths)
         ](FactorioInstance &instance) {
@@ -297,7 +319,17 @@ namespace ComputerPlaysFactorio {
                 auto walk_futur = instance.Request("WalkAndStay", paths[i]);
                 auto &waypoint = waypoints[i + 1];
                 for (auto entity : std::get<std::vector<Entity>>(waypoint)) {
-                    instance.Request("Build", entity);
+                    Build(entity);
+    
+                    if (!entity.GetRecipe().empty()) {
+                        SetEntityProperty(entity, "recipe", entity.GetRecipe());
+                    }
+                    if (!entity.GetInputPriority().empty()) {
+                        SetEntityProperty(entity, "splitter_input_priority", entity.GetInputPriority());
+                    }
+                    if (!entity.GetOutputPriority().empty()) {
+                        SetEntityProperty(entity, "splitter_output_priority", entity.GetOutputPriority());
+                    }
                 }
                 instance.Request("WaitAllRangedRequests").wait();
                 instance.Request("WalkFinishAndStop").wait();
@@ -319,7 +351,7 @@ namespace ComputerPlaysFactorio {
 
         // auto paths = FindMultiPath(m_map_data, {0, 0}, points);
 
-        // task.QueueInstruction([paths](FactorioInstance &instance) {
+        // task.QueueSubTask([paths](FactorioInstance &instance) {
         //     for (auto &path : paths) {
         //         instance.RequestNoRes("Walk", std::get<Path>(path)).wait();
         //         instance.RequestNoRes("Mine", std::get<MapPosition>(path)).wait();

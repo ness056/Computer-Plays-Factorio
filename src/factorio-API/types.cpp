@@ -23,6 +23,7 @@ namespace ComputerPlaysFactorio {
         j["underground_type"] = e.m_underground_type;
         j["input_priority"] = e.m_input_priority;
         j["output_priority"] = e.m_output_priority;
+        j["resource_amount"] = e.m_resource_amount;
     }
 
     void from_json(const json &j, Entity &e) {
@@ -36,6 +37,7 @@ namespace ComputerPlaysFactorio {
         e.m_underground_type = !j.is_null() ? j.value("underground_type", default_.m_underground_type) : default_.m_underground_type;
         e.m_input_priority = !j.is_null() ? j.value("input_priority", default_.m_input_priority) : default_.m_input_priority;
         e.m_output_priority = !j.is_null() ? j.value("output_priority", default_.m_output_priority) : default_.m_output_priority;
+        e.m_resource_amount = !j.is_null() ? j.value("resource_amount", default_.m_resource_amount) : default_.m_resource_amount;
 
         if (e.m_type.empty()) {
             e.m_prototype = &g_prototypes.GetEntity(e.m_name);

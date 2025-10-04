@@ -139,12 +139,23 @@ namespace ComputerPlaysFactorio {
 
         Result SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND) const;
 
+        // You can get the response to a request either with a std::future or with a callback.
+        // This is because in most cases std::futures are easier to use and don't have any drawbacks.
+        // However, in some specific cases, using a callback is better, and supporting both doesn't cost much.
         std::future<json> Request(const std::string &name);
         std::future<json> Request(const std::string &name, const json &data);
         template<class T>
         std::future<json> Request(const std::string &name, const T &data) {
             json j(data);
             return Request(name, j);
+        }
+
+        void Request(const std::string &name, std::function<void(const json&)> callback);
+        void Request(const std::string &name, const json &data, std::function<void(const json&)> callback);
+        template<class T>
+        void Request(const std::string &name, const T &data, std::function<void(const json&)> callback) {
+            json j(data);
+            return Request(name, j, callback);
         }
 
         inline auto Broadcast(const std::string &msg) { return Request("Broadcast", msg); }
@@ -198,6 +209,7 @@ namespace ComputerPlaysFactorio {
         std::map<uint32_t, std::function<void(const json&)>> m_pending_requests;
 
         std::future<json> RequestPrivate(const std::string &name, const json*);
+        void RequestPrivate(const std::string &name, const json*, std::function<void(const json&)> callback);
 
         std::map<std::string, std::function<void(const json &data)>> m_event_handlers;
 

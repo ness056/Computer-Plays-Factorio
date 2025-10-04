@@ -18,10 +18,9 @@ end
 
 script.on_init(function ()
     for k, handler in ipairs(init_handlers) do
-        local status, err = pcall(function ()
+        xpcall(function ()
             handler()
-        end)
-        if not status then API.Throw(tostring(err)) end
+        end, API.ErrorHandler)
     end
 end)
 
@@ -40,10 +39,9 @@ function Event.OnEvent(event, handler)
 
         script.on_event(event, function (e)
             for k, handler_ in ipairs(event_handlers[event]) do
-                local status, err = pcall(function ()
+                xpcall(function ()
                     handler_(e)
-                end)
-                if not status then API.Throw(tostring(err)) end
+                end, API.ErrorHandler)
             end
         end)
     end
@@ -60,10 +58,9 @@ function Event.OnNthTick(tick, handler)
 
         script.on_nth_tick(tick, function (e)
             for k, handler_ in ipairs(nth_tick_handlers[tick]) do
-                local status, err = pcall(function ()
+                xpcall(function ()
                     handler_(e)
-                end)
-                if not status then API.Throw(tostring(err)) end
+                end, API.ErrorHandler)
             end
         end)
     end

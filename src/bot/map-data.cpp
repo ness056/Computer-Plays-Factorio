@@ -4,8 +4,16 @@
 
 namespace ComputerPlaysFactorio {
 
+    // Blueprint Patch::GetBurnerCityBP(Direction starting_direction, int min_running_time, int amount) const {
+
+    // }
+
+    // Blueprint Patch::GetElectricBP(Direction output_direction, int min_running_time, int amount) const {
+
+    // }
+
     bool Chunk::Collides(const Area &bounding_box) const {
-        for (const auto &entity : entities) {
+        for (const auto &entity : m_entities) {
             if (entity.GetBoundingBox().Collides(bounding_box)) return true;
         }
         return false;
@@ -22,7 +30,7 @@ namespace ComputerPlaysFactorio {
 
         if (!fork.position_set) ForkValidationFailed();
 
-        if ((fork.final_player_position - m_player_position).Round() != MapPosition(0, 0)) {
+        if ((fork.final_player_position - m_player_position).Trunc() != MapPosition(0, 0)) {
             ForkValidationFailed();
         }
 
@@ -40,8 +48,8 @@ namespace ComputerPlaysFactorio {
             }
             const auto &other_chunk = m_chunks.at(chunk_pos);
             
-            for (const auto &entity : chunk.entities) {
-                for (const auto &other_entity : other_chunk.entities) {
+            for (const auto &entity : chunk.m_entities) {
+                for (const auto &other_entity : other_chunk.m_entities) {
                     if (entity == other_entity) goto Found;
                 }
                 ForkValidationFailed();
@@ -97,7 +105,16 @@ namespace ComputerPlaysFactorio {
         }
 
         auto &chunk = chunks.at(chunk_position);
-        chunk.entities.push_back(entity);
+        chunk.m_entities.push_back(entity);
+
+        // if (entity.GetType() == "ResourceEntity") {
+        //     SPatch patch;
+        //     for (auto &patch_ : chunk.m_patchs) {
+        //         if (patch_->m_name == entity.GetName()) {
+
+        //         }
+        //     }
+        // }
 
         auto collides_with_player = g_prototypes.HasCollisionMask(entity, "player");
         if (!collides_with_player) return;
@@ -137,7 +154,7 @@ namespace ComputerPlaysFactorio {
         }
 
         auto &chunk = chunks.at(chunk_position);
-        auto &entities = chunk.entities;
+        auto &entities = chunk.m_entities;
 
         const auto entity_it = std::find_if(entities.begin(), entities.end(), [&](const Entity &e) {
             return e.GetName() == name && e.GetPosition() == pos;
@@ -167,16 +184,16 @@ namespace ComputerPlaysFactorio {
         }
     }
 
-    std::expected<Entity, bool> MapData::FindEntity(const std::string &name, const MapPosition &pos, bool use_fork) const {
+    std::expected<Entity*, bool> MapData::FindEntity(const std::string &name, const MapPosition &pos, bool use_fork) {
         std::scoped_lock lock(m_mutex);
 
         auto chunk_pos = pos.ChunkPosition();
-        const auto &chunks = use_fork ? GetFork().chunks : m_chunks;
+        auto &chunks = use_fork ? GetFork().chunks : m_chunks;
 
-        if (!chunks.contains(chunk_pos)) return;
-        const auto &entities = chunks.at(chunk_pos).entities;
-        for (const auto &entity : entities) {
-            if (entity.GetName() == name && entity.GetPosition() == pos) return entity;
+        if (!chunks.contains(chunk_pos)) return std::unexpected(true);
+        auto &entities = chunks.at(chunk_pos).m_entities;
+        for (auto &entity : entities) {
+            if (entity.GetName() == name && entity.GetPosition() == pos) return &entity;
         }
 
         return std::unexpected(false);

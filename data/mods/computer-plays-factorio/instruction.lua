@@ -25,6 +25,13 @@ end)
 ---@param get_area fun(request: Request<any>): BoundingBox?, number?
 function Instruction.AddRangedRequest(request_name, handler, get_area)
     API.AddRequestHandler(request_name, function (request)
+        if request.data.entity then
+            local entity = game.get_surface(1).find_entity(request.data.entity, request.data.position)
+            if entity then
+                if entity.position.x == -103.5 and entity.position.y == 31.5 then log(serpent.line(request)) end
+            end
+        end
+
         if not storage.ranged_requests[request] then
             storage.ranged_requests[request] = true
             return false
@@ -37,7 +44,9 @@ function Instruction.AddRangedRequest(request_name, handler, get_area)
         end
 
         if Area.SqDistanceTo(area, game.get_player(1).position) <= math.pow(range, 2) then
-            handler(request)
+            if (handler(request)) then
+                return false
+            end
             storage.ranged_requests[request] = nil
             return true
         end
@@ -45,7 +54,7 @@ function Instruction.AddRangedRequest(request_name, handler, get_area)
     end)
 end
 
----Evaluate pending instruction, see Player.AddInstructionHandler
+---Evaluate pending ranged instructions, see Instruction.AddRangedRequest
 Event.OnEvent(defines.events.on_tick, function()
     for request, _ in pairs(storage.ranged_requests) do
         local handler = API.GetRequestHandler(request.name)

@@ -185,6 +185,10 @@ namespace ComputerPlaysFactorio {
             return MapPosition(ComputerPlaysFactorio::HalfRound(x), ComputerPlaysFactorio::HalfRound(y));
         }
 
+        constexpr MapPosition Trunc() const {
+            return MapPosition(std::trunc(x), std::trunc(y));
+        }
+
         double Angle() const {
             return std::atan2(y, x);
         }
@@ -301,6 +305,7 @@ namespace ComputerPlaysFactorio {
                 lhs.m_recipe == rhs.m_recipe &&
                 lhs.m_underground_type == rhs.m_underground_type &&
                 lhs.m_input_priority == rhs.m_input_priority &&
+                lhs.m_resource_amount == rhs.m_resource_amount &&
                 lhs.m_output_priority == rhs.m_output_priority;
         }
 
@@ -323,19 +328,22 @@ namespace ComputerPlaysFactorio {
         }
 
         inline const auto &GetMirror() const { return m_mirror; }
-        inline void SetMirror(bool mirror_) { m_mirror = mirror_; }
+        inline void SetMirror(bool mirror) { m_mirror = mirror; }
 
         inline const auto &GetRecipe() const { return m_recipe; }
-        inline void SetRecipe(const std::string &recipe_) { m_recipe = recipe_; }
+        inline void SetRecipe(const std::string &recipe) { m_recipe = recipe; }
 
         inline const auto &GetUndergroundType() const { return m_underground_type; }
-        inline void SetUndergroundType(const std::string &underground_type_) { m_underground_type = underground_type_; }
+        inline void SetUndergroundType(const std::string &underground_type) { m_underground_type = underground_type; }
 
         inline const auto &GetInputPriority() const { return m_input_priority; }
-        inline void SetInputPriority(const std::string &input_priority_) { m_input_priority = input_priority_; }
+        inline void SetInputPriority(const std::string &input_priority) { m_input_priority = input_priority; }
 
         inline const auto &GetOutputPriority() const { return m_output_priority; }
-        inline void SetOutputPriority(const std::string &output_priority_) { m_output_priority = output_priority_; }
+        inline void SetOutputPriority(const std::string &output_priority) { m_output_priority = output_priority; }
+
+        inline const auto &GetResourceAmount() const { return m_resource_amount; }
+        inline void SetResourceAmount(int resource_amount) { m_resource_amount = resource_amount; }
 
         inline const auto &GetBoundingBox() const { return m_bounding_box; }
         inline const auto &GetPrototype() const { return *m_prototype; }
@@ -365,6 +373,7 @@ namespace ComputerPlaysFactorio {
         std::string m_underground_type;   // type of underground "input" or "output"
         std::string m_input_priority;     // "left" or "right"
         std::string m_output_priority;    // "left" or "right"
+        int m_resource_amount = 0;
     };
     using UEntity = std::unique_ptr<Entity>;
     using SEntity = std::shared_ptr<Entity>;

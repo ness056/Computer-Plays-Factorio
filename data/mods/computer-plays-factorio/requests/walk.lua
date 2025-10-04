@@ -9,47 +9,6 @@ Event.OnEvent(defines.events.on_player_changed_position, function (event)
     API.InvokeEvent("PlayerMoved", game.get_player(1).position)
 end)
 
----@param event EventData.on_chunk_generated
-Event.OnEvent(defines.events.on_chunk_generated, function (event)
-    API.InvokeEvent("ChunkGenerated", event.position)
-
-    local surface = game.get_surface(1) --[[@as LuaSurface]]
-    local area = event.area
-    local entities = surface.find_entities_filtered{area = event.area}
-    local filtered_entities = {}
-    for k, entity in pairs(entities) do
-        local pos = entity.position
-        if area.left_top.x - pos.x <= 0 and pos.x - area.right_bottom.x < 0 and
-           area.left_top.y - pos.y <= 0 and pos.y - area.right_bottom.y < 0 and
-           entity.name ~= "character"
-        then
-            table.insert(filtered_entities, {
-                type = entity.type,
-                name = entity.name,
-                position = entity.position,
-                direction = entity.direction
-            })
-        end
-    end
-
-    API.InvokeEvent("EntityAutoPlace", filtered_entities)
-
-    local tiles = surface.find_tiles_filtered{area = event.area}
-    local t = {}
-    for k, tile in pairs(tiles) do
-        local collides = prototypes.tile[tile.name].collision_mask.layers["player"]
-        if not collides then goto continue end
-
-        table.insert(t, {
-            tile.position,
-            TileType.WATER
-        })
-    end
-
-    API.InvokeEvent("SetTiles", t)
-    ::continue::
-end)
-
 local function EvaluatePath()
     local player = game.get_player(1) --[[@as LuaPlayer]]
 

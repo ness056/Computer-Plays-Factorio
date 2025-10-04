@@ -3,7 +3,7 @@ local API = {}
 
 local Json = require("json")
 
----@alias RequestHandler fun(request: Request<any>)
+---@alias RequestHandler fun(request: Request<any>): any
 
 ---@type table<string, RequestHandler>
 local request_handlers = {}
@@ -99,7 +99,7 @@ function API.Failed(request, error)
 end
 
 commands.add_command("request", nil, function (data)
-    local status, err = pcall(function()
+    xpcall(function()
         if data.player_index ~= nil then
             game.get_player(data.player_index).print("You cannot use this command")
             return
@@ -111,11 +111,7 @@ commands.add_command("request", nil, function (data)
         if type(d) ~= "table" then error("Invalid json: " .. data.parameter) end
 
         API.GetRequestHandler(d.name)(d)
-    end)
-
-    if not status then
-        API.Throw(tostring(err))
-    end
+    end, API.ErrorHandler)
 end)
 
 ---@param name string
@@ -144,6 +140,10 @@ end
 ---@param message string
 function API.Throw(message)
     API.InvokeEvent("Throw", debug.traceback(message))
+end
+
+function API.ErrorHandler(err)
+    API.Throw(err);
 end
 
 return API
