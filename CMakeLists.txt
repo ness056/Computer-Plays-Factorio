@@ -40,6 +40,8 @@ add_executable(${PROJECT_NAME}
     src/algorithms/TSP.hpp
     src/utils/thread.hpp
     src/utils/thread.cpp
+    src/config.hpp
+    src/config.cpp
     src/utils/logging.hpp
     src/utils/logging.cpp
     src/utils/utils.hpp

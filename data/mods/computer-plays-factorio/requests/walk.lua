@@ -26,9 +26,18 @@ local function EvaluatePath()
     local speed = player.character.character_running_speed
     if Vector.SqLength(v) <= math.pow(speed, 2) then
         if storage.current_waypoint + 1 <= table_size(path) then
+            if storage.debug_path and storage.current_waypoint ~= 1 then
+                rendering.draw_circle{surface=1, color={255, 0, 0}, radius = 0.2, target=waypoint, filled=true}
+            end
+
             storage.current_waypoint = storage.current_waypoint + 1
             EvaluatePath()
         elseif not storage.is_walk_until then
+            if storage.debug_path then
+                rendering.draw_circle{surface=1, color={255, 255, 0}, radius = 0.2, target=waypoint, filled=true}
+                rendering.draw_circle{surface=1, color={255, 0, 255}, radius = player.build_distance, target=waypoint, width=4}
+            end
+
             API.Success(storage.walk_request)
             storage.walk_request = nil
             walking_state.walking = false

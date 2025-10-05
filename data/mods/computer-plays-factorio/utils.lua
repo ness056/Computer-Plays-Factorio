@@ -70,4 +70,17 @@ API.AddRequestHandler("PlayerPosition", function (request)
     API.Success(request, player and player.position or nil)
 end)
 
+---@param request Request<{position: MapPosition.0, radius: number, color: Color, filled: boolean}>
+API.AddRequestHandler("DrawCircle", function (request)
+    local data = request.data
+    rendering.draw_circle{ surface=1, target=data.position, radius=data.radius, color=data.color, filled=data.filled }
+    API.Success(request)
+end)
+
+---@param request Request<boolean>
+API.AddRequestHandler("SetDebugPath", function (request)
+    storage.debug_path = request.data
+    API.Success(request)
+end)
+
 return Utils

@@ -86,7 +86,6 @@ namespace ComputerPlaysFactorio {
     std::future<json> Bot::SetEntityProperty(const std::string &name, const MapPosition &pos, const std::string &property, const T &value) {
         auto promise = std::make_shared<std::promise<json>>();
 
-        DEBUG1
         m_instance.Request("SetEntityProperty", {
             {"entity", name},
             {"position", pos},

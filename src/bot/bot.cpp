@@ -4,6 +4,7 @@
 
 #include "../algorithms/path-finder.hpp"
 #include "../algorithms/TSP.hpp"
+#include "../config.hpp"
 
 namespace ComputerPlaysFactorio {
 
@@ -22,6 +23,7 @@ namespace ComputerPlaysFactorio {
         });
 
         m_instance.RegisterEvent("Ready", [this](const json&) {
+            m_instance.Request("SetDebugPath", g_config.debug_path).wait();
             OnReady();
         });
 
@@ -173,10 +175,20 @@ namespace ComputerPlaysFactorio {
         using SEntityTuple = std::shared_ptr<EntityTuple>;
 
         const MapPosition center = (blueprint.center.Rotate(direction) + offset).HalfRound();
+
+        if (g_config.debug_path) {
+            m_instance.Request("DrawCircle", {
+                {"position", center},
+                {"radius", 0.5},
+                {"color", {0, 0, 255}},
+                {"filled", true}
+            });
+        }
+
         const auto comp = [&center](const SEntityTuple &lhs, const SEntityTuple &rhs) {
             return
-                MapPosition::SqDistance(center, std::get<0>(*lhs).GetPosition()) <
-                MapPosition::SqDistance(center, std::get<0>(*rhs).GetPosition());
+                MapPosition::SqDistance(center, std::get<Entity>(*lhs).GetPosition()) <
+                MapPosition::SqDistance(center, std::get<Entity>(*rhs).GetPosition());
         };
 
         std::priority_queue<SEntityTuple, std::vector<SEntityTuple>, decltype(comp)> queue(comp);
@@ -205,9 +217,8 @@ namespace ComputerPlaysFactorio {
         // In order to find a path where the bot will be at least once in building range of every entities,
         // we first find a list of points where all entities are in range of at least 1 of those points.
         // Then we link all the points to find the shortest path as the crow flies (which is the travelling
-        // salesman problem). And finally we use a normal pathfinder to get the actual path between each points.
-        // We also need to find the closest point to the starting location of the bot so that it can join the
-        // building path.
+        // salesman problem).
+        // And finally we use a normal pathfinder to get the actual path between each points.
 
         // Find the list of points
         std::vector<std::tuple<MapPosition, std::vector<Entity>, double>> waypoints;
@@ -220,6 +231,15 @@ namespace ComputerPlaysFactorio {
                 continue;
             }
             auto &entity = std::get<Entity>(*t);
+
+            if (g_config.debug_path) {
+                m_instance.Request("DrawCircle", {
+                    {"position", entity.GetPosition()},
+                    {"radius", 0.5},
+                    {"color", {0, 255, 0}},
+                    {"filled", false}
+                });
+            }
 
             const auto comp2 = [&center](const MapPosition &lhs, const MapPosition &rhs) {
                 return MapPosition::SqDistance(center, lhs) < MapPosition::SqDistance(center, rhs);

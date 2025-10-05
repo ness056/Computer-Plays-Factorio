@@ -1,8 +1,5 @@
 #pragma once
 
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-
 namespace ComputerPlaysFactorio {
     
     class App {
@@ -15,7 +12,5 @@ namespace ComputerPlaysFactorio {
     private:
         void SetTerminate();
         void LoadConfig();
-
-        json m_config;
     };
 }
