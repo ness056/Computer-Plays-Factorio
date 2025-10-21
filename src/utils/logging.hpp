@@ -83,4 +83,5 @@ namespace ComputerPlaysFactorio {
 
     #define DEBUG1 Debug("{}", __LINE__);
     #define DEBUG2(msg) Debug("{}: {}", __LINE__, msg);
+    #define DEBUG3(msg1, msg2) Debug("{}: {}; {}", __LINE__, msg1, msg2);
 }

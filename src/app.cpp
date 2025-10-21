@@ -23,7 +23,7 @@ namespace ComputerPlaysFactorio {
                     std::rethrow_exception(ptr);
                 }
             } catch (const LuaError &e) {
-                Error("The lua side has thrown an exception: ", e.what());
+                Error("The lua side has thrown an exception: {}", e.what());
             } catch (const std::exception &e) {
                 Error("Exception of type {}: {}",
                     cpptrace::demangle(typeid(e).name()), e.what());

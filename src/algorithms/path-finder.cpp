@@ -33,7 +33,7 @@ namespace ComputerPlaysFactorio {
 
     std::expected<Path, Result> FindPath(
         const MapData &data,
-        bool use_fork,
+        MapData::Branch branch,
         const MapPosition &start,
         const MapPosition &goal,
         double radius
@@ -60,7 +60,7 @@ namespace ComputerPlaysFactorio {
 
             for (size_t i = 0; i < c_directions_count; i++) {
                 MapPosition new_pos(current->pos + c_directions[i] * 0.5);
-                if (data.PathfinderCollides(new_pos, use_fork) || closed_set.contains(new_pos)) {
+                if (data.PathfinderCollides(new_pos, branch) || closed_set.contains(new_pos)) {
                     continue;
                 }
 

@@ -16,6 +16,10 @@ namespace ComputerPlaysFactorio {
             CheckValid();
             return m_prototypes[type][name];
         }
+        inline const json &Get(const Entity &entity) const {
+            if (entity.GetType().empty()) return GetEntity(entity.GetName());
+            else return Get(entity.GetType(), entity.GetName());
+        }
 
         // Gets an entity prototype from its name without needing its prototype type.
         // If you know the type beforehand, the Get method will be way faster.

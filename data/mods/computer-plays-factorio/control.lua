@@ -23,6 +23,7 @@ Event.OnEvent(defines.events.on_tick, function (event)
         game.get_player(1).insert({name="underground-belt", count=250})
         game.get_player(1).insert({name="splitter", count=250})
         game.get_player(1).insert({name="roboport", count=10})
+        game.get_player(1).insert({name="burner-mining-drill", count=100})
         API.InvokeEvent("Ready")
     end
 end)

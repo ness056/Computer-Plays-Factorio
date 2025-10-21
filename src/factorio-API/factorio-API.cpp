@@ -101,8 +101,11 @@ namespace ComputerPlaysFactorio {
         config.save(GetConfigPath().string());
 
         RegisterEvent("Throw", [](const json &j) {
-            std::cout << j["data"].get<std::string>() << std::endl;
             throw LuaError(j["data"].get<std::string>());
+        });
+
+        RegisterEvent("Info", [](const json &j) {
+            Info("Lua API: {}", j["data"].get<std::string>());
         });
     }
 
@@ -163,7 +166,7 @@ namespace ComputerPlaysFactorio {
         WaitForInputIdle(m_process_info.hProcess, INFINITE);
         
         // According to cppreference the set_terminate should propagate to all threads,
-        // even if created afterwards, but it seems MSVC does not follow the cpp standard...
+        // even if the thread created afterwards, but it seems MSVC does not follow the cpp standard...
         auto terminate = std::get_terminate();
         m_out_listener = std::thread(&FactorioInstance::OutListener, this, terminate);
         m_out_listener.detach();
@@ -322,7 +325,6 @@ namespace ComputerPlaysFactorio {
             }
         }
 
-        // std::cout << std::string(buffer, read_bytes);
         return (int)read_bytes;
     }
 

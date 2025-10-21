@@ -3,28 +3,10 @@
 #include "../factorio-API/types.hpp"
 
 namespace ComputerPlaysFactorio {
-    template <class T>
-    double TSPTotalLength(
-        const std::vector<T> &points,
-        std::function<const MapPosition&(const T&)> position_getter,
-        bool fixed_end_point
-    ) {
-        size_t n = points.size();
-        double length = fixed_end_point ? 0 : MapPosition::Distance(
-            position_getter(points[0]),
-            position_getter(points[n - 1])
-        );
-
-        for (int i = 0; i < n - 1; i++) {
-            length += MapPosition::Distance(position_getter(points[i]), position_getter(points[i + 1]));
-        }
-        return length;
-    }
 
     template <class T>
     void TSPSwap(
         std::vector<T> &points,
-        std::function<const MapPosition&(const T&)> position_getter,
         int i, int j
     ) {
         i++;
@@ -43,10 +25,8 @@ namespace ComputerPlaysFactorio {
     void TSP(
         std::vector<T> &points,
         std::function<const MapPosition&(const T&)> position_getter,
-        bool fixed_end_point
+        bool
     ) {
-        DEBUG2(TSPTotalLength(points, position_getter, fixed_end_point));
-
         size_t n = points.size();
         bool found_improvement = true;
         while (found_improvement) {
@@ -63,14 +43,11 @@ namespace ComputerPlaysFactorio {
                         MapPosition::Distance(i_pos, j_pos) + MapPosition::Distance(i2_pos, j2_pos);
 
                     if (length_delta < -0.1) {
-                        TSPSwap<T>(points, position_getter, i, j);
+                        TSPSwap<T>(points, i, j);
                         found_improvement = true;
                     }
                 }
             }
-            DEBUG2(TSPTotalLength(points, position_getter, fixed_end_point));
         }
-
-        DEBUG2(TSPTotalLength(points, position_getter, fixed_end_point));
     }
 }

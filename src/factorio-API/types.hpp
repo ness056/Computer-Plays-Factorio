@@ -1,9 +1,12 @@
 #pragma once
 
+#define _USE_MATH_DEFINES
+#include <math.h>
 #include <cstdint>
 #include <cmath>
 #include <string>
 #include <vector>
+#include <expected>
 
 #include "../utils/base64.h"
 #include <zlib.h>
@@ -13,8 +16,6 @@ using json = nlohmann::json;
 #include "../utils/logging.hpp"
 
 namespace ComputerPlaysFactorio {
-
-    class FactorioInstance;
 
     enum class Direction {
         NORTH = 0,
@@ -46,6 +47,38 @@ namespace ComputerPlaysFactorio {
         return lhs;
     }
 
+    // Returns the closest cardinal direction.
+    // Diagonal directions (which are at equidistance of 2 cardinal direction) return the first cardinal direction when rotating clockwise
+    constexpr Direction CardinalDirection(Direction direction) {
+        switch (direction) {
+            case Direction::NORTH: return Direction::NORTH;
+            case Direction::SOUTH: return Direction::SOUTH;
+            case Direction::WEST:  return Direction::WEST;
+            case Direction::EAST:  return Direction::EAST;
+
+            case Direction::NORTH_WEST: return Direction::NORTH;
+            case Direction::NORTH_EAST: return Direction::EAST;
+            case Direction::SOUTH_WEST: return Direction::WEST;
+            case Direction::SOUTH_EAST: return Direction::SOUTH;
+
+            case Direction::NORTH_NORTH_WEST: return Direction::NORTH;
+            case Direction::WEST_NORTH_WEST:  return Direction::WEST;
+            case Direction::NORTH_NORTH_EAST: return Direction::NORTH;
+            case Direction::EAST_NORTH_EAST:  return Direction::EAST;
+
+            case Direction::SOUTH_SOUTH_WEST: return Direction::SOUTH;
+            case Direction::WEST_SOUTH_WEST:  return Direction::WEST;
+            case Direction::SOUTH_SOUTH_EAST: return Direction::SOUTH;
+            case Direction::EAST_SOUTH_EAST:  return Direction::EAST;
+        }
+
+        assert(false);
+        return Direction::NORTH;
+    }
+
+    void ForEachCardinal(std::function<void(Direction)> callback);
+    void ForEachDiagonal(std::function<void(Direction)> callback);
+
     struct MapPosition {
         constexpr MapPosition() : x(0), y(0) {}
         constexpr MapPosition(double x_, double y_) : x(x_), y(y_) {}
@@ -71,6 +104,10 @@ namespace ComputerPlaysFactorio {
                 case Direction::SOUTH_SOUTH_EAST: x =  0.5; y =  1;   break;
                 case Direction::EAST_SOUTH_EAST:  x =  1;   y =  0.5; break;
             }
+        }
+
+        constexpr MapPosition operator-() const {
+            return MapPosition(-x, -y);
         }
 
         constexpr MapPosition &operator+=(const MapPosition &rhs) {
@@ -106,6 +143,17 @@ namespace ComputerPlaysFactorio {
             return lhs;
         }
 
+        constexpr MapPosition &operator*=(MapPosition rhs) {
+            x *= rhs.x;
+            y *= rhs.y;
+            return *this;
+        }
+
+        friend constexpr MapPosition operator*(MapPosition lhs, MapPosition rhs) {
+            lhs *= rhs;
+            return lhs;
+        }
+
         constexpr MapPosition &operator/=(double rhs) {
             x /= rhs;
             y /= rhs;
@@ -113,6 +161,17 @@ namespace ComputerPlaysFactorio {
         }
 
         friend constexpr MapPosition operator/(MapPosition lhs, double rhs) {
+            lhs /= rhs;
+            return lhs;
+        }
+
+        constexpr MapPosition &operator/=(MapPosition rhs) {
+            x /= rhs.x;
+            y /= rhs.y;
+            return *this;
+        }
+
+        friend constexpr MapPosition operator/(MapPosition lhs, MapPosition rhs) {
             lhs /= rhs;
             return lhs;
         }
@@ -157,7 +216,7 @@ namespace ComputerPlaysFactorio {
             case Direction::EAST: return MapPosition(-y, x);
             case Direction::NORTH:
             default:
-                return MapPosition(x, y);
+                return *this;
             }
         }
 
@@ -189,8 +248,16 @@ namespace ComputerPlaysFactorio {
             return MapPosition(std::trunc(x), std::trunc(y));
         }
 
-        double Angle() const {
+        inline double Angle() const {
             return std::atan2(y, x);
+        }
+
+        inline Direction ToDirection() const {
+            constexpr double f = ((double)Direction::END - 1) / (2 * M_PI);
+            constexpr double s = M_PI * 5 / 2 + 2 * M_PI / (double)Direction::END;
+            double angle = Angle() + s;
+
+            return (Direction)((int)std::round(angle * f) % (int)Direction::END);
         }
 
         static constexpr double SqDistance(const MapPosition &lhs, const MapPosition &rhs) {
@@ -200,6 +267,30 @@ namespace ComputerPlaysFactorio {
 
         static inline double Distance(const MapPosition &lhs, const MapPosition &rhs) {
             return std::sqrt(SqDistance(lhs, rhs));
+        }
+
+        static constexpr double Det(const MapPosition &lhs, const MapPosition &rhs) {
+            return lhs.x * rhs.y - lhs.y * rhs.x;
+        }
+
+        // Returns the intersection point between the line (a1, a2) and (b1, b2)
+        static constexpr std::optional<MapPosition> IntersectionPoint(
+            const MapPosition &a1, const MapPosition &a2, const MapPosition &b1, const MapPosition &b2
+        ) {
+            MapPosition a = a2 - a1;
+            MapPosition b = b2 - b1;
+            double det = Det(a, b);
+
+            if (det == 0) return std::nullopt;
+
+            MapPosition c = b1 - a1;
+            double det2 = Det(c, b) / det;
+            if (det2 < 0 || det2 > 1) return std::nullopt;
+
+            double det3 = Det(c, a) / det;
+            if (det3 < 0 || det3 > 1) return std::nullopt;
+
+            return a1 + a * det2;
         }
 
         double x;
@@ -218,6 +309,8 @@ namespace ComputerPlaysFactorio {
             left_top = center - shift;
             right_bottom = center + shift;
         }
+        constexpr Area(double x1, double y1, double x2, double y2) :
+            Area(MapPosition(x1, y1), MapPosition(x2, y2)) {}
 
         constexpr MapPosition GetLeftBottom() const {
             return MapPosition(left_top.x, right_bottom.y);
@@ -249,10 +342,22 @@ namespace ComputerPlaysFactorio {
             return area;
         }
 
+        constexpr MapPosition Center() const {
+            return (left_top + right_bottom) / 2;
+        }
+
         // NORTH direction is an angle of 0, EAST is pi/2 clockwise
         // Only supports the north, south, east and west. Others will return a copy.
         constexpr Area Rotate(Direction direction) const {
-            return Area(left_top.Rotate(direction), right_bottom.Rotate(direction));
+            const double &x1 = left_top.x, &y1 = left_top.y, &x2 = right_bottom.x, &y2 = right_bottom.y;
+            switch (direction) {
+            case Direction::SOUTH: return Area(-x2, -y2, -x1, -y1);
+            case Direction::WEST: return Area(y1, -x2, y2, -x1);
+            case Direction::EAST: return Area(-y2, x1, -y1, x2);
+            case Direction::NORTH:
+            default:
+                return *this;
+            }
         }
 
         constexpr double Distance(const MapPosition &point) const {
@@ -285,6 +390,29 @@ namespace ComputerPlaysFactorio {
     void to_json(json &j, const Area &area);
     void from_json(const json &j, Area &area);
 
+    // A helper function to iterate through all the points in a circle from the closest
+    // to attraction_point to the furthest. callback may return true to break the loop early.
+    // finally is called only if loop end is reached but callback never returned true.
+    void IterateFromClosestPointCircle(
+        const MapPosition &attraction_point,
+        bool half_intergers,
+        const MapPosition &center,
+        double radius,
+        std::function<bool(const MapPosition&)> callback,
+        std::function<void()> finally = nullptr
+    );
+
+    // A helper function to iterate through all the points in a rectangle from the closest
+    // to attraction_point to the furthest. callback may return true to break the loop early.
+    // finally is called only if loop end is reached but callback never returned true.
+    void IterateFromClosestPointArea(
+        const MapPosition &attraction_point,
+        const MapPosition &step_vector,
+        const Area &area,
+        std::function<bool(const MapPosition&)> callback,
+        std::function<void()> finally = nullptr
+    );
+
     using Path = std::vector<MapPosition>;
 
     enum class TileType {
@@ -310,20 +438,20 @@ namespace ComputerPlaysFactorio {
         }
 
         inline const auto &GetType() const { return m_type; }
-        inline void SetType(const std::string &type_) { m_type = type_; }
+        inline void SetType(const std::string &type) { m_type = type; }
 
         inline const auto &GetName() const { return m_name; }
-        void SetName(const std::string &name_);
+        void SetName(const std::string &name);
 
         inline const auto &GetPosition() const { return m_position; }
-        inline void SetPosition(const MapPosition &position_) {
-            m_position = position_;
+        inline void SetPosition(const MapPosition &position) {
+            m_position = position;
             UpdateBoundingBox();
         }
 
         inline const auto &GetDirection() const { return m_direction; }
-        inline void SetDirection(Direction direction_) {
-            m_direction = direction_;
+        inline void SetDirection(Direction direction) {
+            m_direction = direction;
             UpdateBoundingBox();
         }
 
@@ -351,12 +479,12 @@ namespace ComputerPlaysFactorio {
     private:
         friend void to_json(json &j, const Entity &e);
         friend void from_json(const json &j, Entity &e);
-        friend Blueprint DecodeBlueprintStr(const std::string &str);
+        friend struct Blueprint;
 
         void UpdateBoundingBox() {
             const auto &proto = *m_prototype;
             if (proto.contains("collision_box")) {
-                m_bounding_box = (*m_prototype)["collision_box"].get<Area>().Rotate(m_direction) + m_position;
+                m_bounding_box = proto["collision_box"].get<Area>().Rotate(m_direction) + m_position;
             }
         }
 
@@ -384,13 +512,20 @@ namespace ComputerPlaysFactorio {
     struct Blueprint {
         std::vector<Entity> entities;
         MapPosition center;
+
+        void Shift(const MapPosition &vector);
+        void Rotate(Direction direction);
+
+        int CountEntityType(const std::string &type) const;
+        int CountEntityName(const std::string &name) const;
+
+        // Load should be preferred.
+        static Blueprint LoadString(const std::string &str);
+
+        // Decode the blueprint in the file at path data/blueprints/{path}.
+        // The blueprints are cached, meaning that if a file is requested multiple times, it will only be loaded once.
+        static const Blueprint &Load(const std::filesystem::path &path);
     };
-
-    // returns the json of the blueprint as described here: https://wiki.factorio.com/Blueprint_string_format.
-    // In addition the entity objects have the additional field prototype_type that contains the entity type.
-    Blueprint DecodeBlueprintStr(const std::string &str);
-
-    Blueprint DecodeBlueprintFile(const std::filesystem::path &path);
 }
 
 template<>

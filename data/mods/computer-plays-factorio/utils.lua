@@ -1,6 +1,31 @@
 local Utils = {}
 
 local API = require("__computer-plays-factorio__.api")
+local Math2d = require("__computer-plays-factorio__.math2d")
+local Vector = Math2d.Vector
+
+---@generic T
+---@param table T[]
+---@param value T
+---@param cmp fun(a: T, b: T): number -- Comparator function, returns negative if a < b, positive if a > b, zero if a == b
+---@return integer, boolean -- Index and whether the value was found
+function Utils.BinarySearch(table, value, cmp)
+    local low = 1
+    local high = #table
+    while low <= high do
+        local mid = math.floor((low + high) / 2)
+        local mid_value = table[mid]
+        local comparison = cmp(mid_value, value)
+        if comparison < 0 then
+            low = mid + 1
+        elseif comparison > 0 then
+            high = mid - 1
+        else
+            return mid, true
+        end
+    end
+    return low, false
+end
 
 commands.add_command("reload", "", function (c)
     game.reload_mods()
@@ -39,8 +64,12 @@ commands.add_command("profile_command", "Same as /c but measures the time to exe
     end
 end)
 
-commands.add_command("export_pathfinder_data", "", function (c)
-    API.InvokeEvent("ExportPathfinderData");
+commands.add_command("draw_pathfinder_data", "", function (c)
+    API.InvokeEvent("DrawPathfinderData", tonumber(c.parameter));
+end)
+
+commands.add_command("draw_patchs", "", function (c)
+    API.InvokeEvent("DrawPatchs");
 end)
 
 ---@param request Request<string>
@@ -77,9 +106,47 @@ API.AddRequestHandler("DrawCircle", function (request)
     API.Success(request)
 end)
 
----@param request Request<boolean>
-API.AddRequestHandler("SetDebugPath", function (request)
-    storage.debug_path = request.data
+---@param request Request<{positions: MapPosition.0[], radius: number, color: Color, filled: boolean}>
+API.AddRequestHandler("DrawCircleBulk", function (request)
+    local data = request.data
+    for k, position in pairs(data.positions) do
+        rendering.draw_circle{
+            surface=1,
+            target=position,
+            radius=data.radius,
+            color=data.color,
+            filled=data.filled
+        }
+    end
+    API.Success(request)
+end)
+
+---@param request Request<{area: BoundingBox.0, color: Color, filled: boolean}>
+API.AddRequestHandler("DrawRectangle", function (request)
+    local data = request.data
+    rendering.draw_rectangle{ surface=1, left_top=data.area.left_top, right_bottom=data.area.right_bottom, color=data.color, filled=data.filled }
+    API.Success(request)
+end)
+
+---@param request Request<{areas: BoundingBox.0[]?, positions: MapPosition.0[]?, side_length: number?, color: Color, filled: boolean}>
+API.AddRequestHandler("DrawRectangleBulk", function (request)
+    local data = request.data
+    data.side_length = data.side_length / 2
+    if data.areas then
+        for k, area in pairs(data.areas) do
+            rendering.draw_rectangle{ surface=1, left_top=area.left_top, right_bottom=area.right_bottom, color=data.color, filled=data.filled }
+        end
+    else
+        for k, position in pairs(data.positions) do
+            rendering.draw_rectangle{
+                surface=1,
+                left_top=Vector.Add(position, {-data.side_length, -data.side_length}),      ---@diagnostic disable-line
+                right_bottom=Vector.Add(position, {data.side_length, data.side_length}),    ---@diagnostic disable-line
+                color=data.color,
+                filled=data.filled
+            }
+        end
+    end
     API.Success(request)
 end)
 

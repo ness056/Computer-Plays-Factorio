@@ -3,8 +3,22 @@
 
 namespace ComputerPlaysFactorio {
 
-    void Entity::SetName(const std::string &name_) {
-        m_name = name_;
+    void ForEachCardinal(std::function<void(Direction)> func) {
+        func(Direction::NORTH);
+        func(Direction::EAST);
+        func(Direction::SOUTH);
+        func(Direction::WEST);
+    }
+
+    void ForEachDiagonal(std::function<void(Direction)> func) {
+        func(Direction::NORTH_EAST);
+        func(Direction::SOUTH_EAST);
+        func(Direction::SOUTH_WEST);
+        func(Direction::NORTH_WEST);
+    }
+
+    void Entity::SetName(const std::string &name) {
+        m_name = name;
         if (m_type.empty()) {
             m_prototype = &g_prototypes.GetEntity(m_name);
             m_type = (*m_prototype)["type"].get<std::string>();
@@ -85,7 +99,161 @@ namespace ComputerPlaysFactorio {
         }
     }
 
-    Blueprint DecodeBlueprintStr(const std::string &str) {
+    void IterateFromClosestPointCircle(
+        const MapPosition &attraction_point,
+        bool half_intergers,
+        const MapPosition &center,
+        double radius,
+        std::function<bool(const MapPosition&)> callback,
+        std::function<void()> finally
+    ) {
+        const double sq_radius = radius * radius;
+        const double d = half_intergers ? 0.5 : 1.;
+
+        const auto comp2 = [&attraction_point](const MapPosition &lhs, const MapPosition &rhs) {
+            return MapPosition::SqDistance(attraction_point, lhs) > MapPosition::SqDistance(attraction_point, rhs);
+        };
+        std::priority_queue<MapPosition, std::vector<MapPosition>, decltype(comp2)> points(comp2);
+        std::unordered_set<MapPosition> visited;
+
+        MapPosition pos = attraction_point;
+        if (MapPosition::SqDistance(pos, center) > sq_radius) {
+            double angle = (pos - center).Angle();
+            pos.x = center.x + radius * std::cos(angle);
+            pos.y = center.y + radius * std::sin(angle);
+        }
+        if (half_intergers) pos = pos.HalfRound();
+        else pos = pos.Round();
+
+        if (MapPosition::SqDistance(pos, center) <= sq_radius && callback(pos)) return;
+        while (true) {
+            for (double dx = -d; dx <= d; dx += d) {
+                for (double dy = -d; dy <= d; dy += d) {
+                    if (dx == 0 && dy == 0) continue;
+                    MapPosition neighbor = pos + MapPosition(dx, dy);
+                    if (
+                        !visited.contains(neighbor) &&
+                        MapPosition::SqDistance(neighbor, center) <= sq_radius
+                    ) {
+                        visited.emplace(neighbor);
+                        points.emplace(neighbor);
+                    }
+                }
+            }
+
+            if (points.empty()) break;
+            pos = points.top();
+            points.pop();
+            
+            if (callback(pos)) return;
+        };
+
+        if (finally) finally();
+    }
+
+    void IterateFromClosestPointArea(
+        const MapPosition &attraction_point,
+        const MapPosition &step_vector,
+        const Area &area,
+        std::function<bool(const MapPosition&)> callback,
+        std::function<void()> finally
+    ) {
+        assert(step_vector.HalfRound() == step_vector);
+
+        bool half_intergers = step_vector.Round() != step_vector;
+        std::array<MapPosition, 4> vectors = {
+            step_vector,
+            step_vector.Rotate(Direction::EAST),
+            step_vector.Rotate(Direction::SOUTH),
+            step_vector.Rotate(Direction::WEST),
+        };
+
+        const auto comp2 = [&attraction_point](const MapPosition &lhs, const MapPosition &rhs) {
+            return MapPosition::SqDistance(attraction_point, lhs) > MapPosition::SqDistance(attraction_point, rhs);
+        };
+        std::priority_queue<MapPosition, std::vector<MapPosition>, decltype(comp2)> points(comp2);
+        std::unordered_set<MapPosition> visited;
+
+        MapPosition pos = attraction_point;
+        if (!area.Collides(pos)) {
+            const MapPosition center = area.Center();
+            const Direction direction = CardinalDirection((pos - center).ToDirection());
+
+            if (direction == Direction::NORTH) {
+                auto p = MapPosition::IntersectionPoint(center, pos, area.left_top, area.GetRightTop());
+                if (!p) throw RuntimeErrorF("No intersection point found.");
+                pos = *p;
+            } else if (direction == Direction::EAST) {
+                auto p = MapPosition::IntersectionPoint(center, pos, area.right_bottom, area.GetRightTop());
+                if (!p) throw RuntimeErrorF("No intersection point found.");
+                pos = *p;
+            } else if (direction == Direction::SOUTH) {
+                auto p = MapPosition::IntersectionPoint(center, pos, area.right_bottom, area.GetLeftBottom());
+                if (!p) throw RuntimeErrorF("No intersection point found.");
+                pos = *p;
+            } else {    // West
+                auto p = MapPosition::IntersectionPoint(center, pos, area.left_top, area.GetLeftBottom());
+                if (!p) throw RuntimeErrorF("No intersection point found.");
+                pos = *p;
+            }
+        }
+        if (half_intergers) pos = pos.HalfRound();
+        else pos = pos.Round();
+
+        if (area.Collides(pos) && callback(pos)) return;
+        while (true) {
+            for (const auto &vec : vectors) {
+                MapPosition neighbor = pos + vec;
+                if (!visited.contains(neighbor) && area.Collides(neighbor)) {
+                    visited.emplace(neighbor);
+                    points.emplace(neighbor);
+                }
+            }
+
+            if (points.empty()) break;
+            pos = points.top();
+            points.pop();
+            
+            if (callback(pos)) return;
+        };
+
+        if (finally) finally();
+    }
+
+    void Blueprint::Shift(const MapPosition &vector) {
+        for (auto &entity : entities) {
+            entity.SetPosition(entity.GetPosition() + vector);
+        }
+        center += vector;
+    }
+
+    void Blueprint::Rotate(Direction direction) {
+        for (auto &entity : entities) {
+            entity.SetDirection(entity.GetDirection() + direction);
+            entity.SetPosition(entity.GetPosition().Rotate(direction));
+        }
+        center = center.Rotate(direction);
+    }
+
+    int Blueprint::CountEntityType(const std::string &type) const {
+        int count = 0;
+        for (const auto &entity : entities) {
+            if (entity.GetType() == type) count++;
+        }
+        
+        return count;
+    }
+
+    int Blueprint::CountEntityName(const std::string &name) const {
+        int count = 0;
+        for (const auto &entity : entities) {
+            if (entity.GetName() == name) count++;
+        }
+        
+        return count;
+    }
+
+    Blueprint Blueprint::LoadString(const std::string &str) {
         auto compressed = base64_decode(str.substr(1), true);
 
         json blueprint_json;
@@ -168,11 +336,24 @@ namespace ComputerPlaysFactorio {
         return blueprint;
     }
 
-    Blueprint DecodeBlueprintFile(const std::filesystem::path &path) {
-        auto size = std::filesystem::file_size(path);
-        std::string bp(size, '\0');
-        std::ifstream in(path);
-        in.read(&bp[0], size);
-        return DecodeBlueprintStr(bp);
+    const Blueprint &Blueprint::Load(const std::filesystem::path &path_) {
+        auto path = GetDataPath() / "blueprints" / path_;
+        static std::map<std::filesystem::path, Blueprint> blueprints;
+
+        if (!blueprints.contains(path)) {
+            Info("Loading blueprint {}", path_.string());
+
+            if (!std::filesystem::exists(path)) {
+                throw RuntimeErrorF("Failed to load blueprint {}, the file doesn't exist.", path.string());
+            }
+
+            auto size = std::filesystem::file_size(path);
+            std::string bp(size, '\0');
+            std::ifstream in(path);
+            in.read(&bp[0], size);
+            blueprints.emplace(path, LoadString(bp));
+        }
+       
+        return blueprints[path];
     }
 }

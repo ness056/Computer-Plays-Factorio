@@ -13,7 +13,9 @@ Event.OnInit(function ()
     ---@type { [Request<any>]: true }
     storage.ranged_requests = {}
     ---@type { [Request<any>]: true }
-    storage.wait_ranged_requests = {}
+    storage.mine_requests = {}
+    ---@type { [Request<any>]: true }
+    storage.wait_entity_requests = {}
     ---@type int
     storage.current_waypoint = 1
 end)
@@ -22,28 +24,26 @@ end)
 ---requires the player to be in range of some area
 ---@param request_name string | string[]
 ---@param handler RequestHandler
----@param get_area fun(request: Request<any>): BoundingBox?, number?
+---@param get_area fun(request: Request<any>): BoundingBox?, number?, boolean?
 function Instruction.AddRangedRequest(request_name, handler, get_area)
     API.AddRequestHandler(request_name, function (request)
-        if request.data.entity then
-            local entity = game.get_surface(1).find_entity(request.data.entity, request.data.position)
-            if entity then
-                if entity.position.x == -103.5 and entity.position.y == 31.5 then log(serpent.line(request)) end
-            end
-        end
-
         if not storage.ranged_requests[request] then
             storage.ranged_requests[request] = true
             return false
         end
 
-        local area, range = get_area(request)
+        local area, range, collides_with_player = get_area(request)
         if not area or not range then
             storage.ranged_requests[request] = nil
             return false
         end
 
-        if Area.SqDistanceTo(area, game.get_player(1).position) <= math.pow(range, 2) then
+        local player = game.get_player(1) --[[@as LuaPlayer]]
+        if Area.SqDistanceTo(area, player.position) <= math.pow(range, 2) then
+            if (collides_with_player and Area.Contains(area, player.character.bounding_box)) then
+                return false
+            end
+
             if (handler(request)) then
                 return false
             end
@@ -61,16 +61,16 @@ Event.OnEvent(defines.events.on_tick, function()
         if handler(request) then break end
     end
 
-    if table_size(storage.ranged_requests) == 0 then
-        for request, _ in pairs(storage.wait_ranged_requests) do
+    if table_size(storage.ranged_requests) == 0 and table_size(storage.mine_requests) == 0 then
+        for request, _ in pairs(storage.wait_entity_requests) do
             API.Success(request)
-            storage.wait_ranged_requests[request] = nil
+            storage.wait_entity_requests[request] = nil
         end
     end
 end)
 
-API.AddRequestHandler("WaitAllRangedRequests", function (request)
-    storage.wait_ranged_requests[request] = true
+API.AddRequestHandler("WaitAllEntityRequests", function (request)
+    storage.wait_entity_requests[request] = true
 end)
 
 return Instruction

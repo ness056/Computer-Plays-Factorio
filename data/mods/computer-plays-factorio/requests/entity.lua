@@ -23,7 +23,7 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
                 name = entity.name,
                 position = entity.position,
                 direction = entity.direction,
-                resource_amount = entity.type == "ResourceEntity" and entity.amount
+                resource_amount = entity.type == "resource" and entity.amount
             })
         end
     end
@@ -38,7 +38,8 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
 
         table.insert(t, {
             tile.position,
-            TileType.WATER
+            TileType.WATER,
+            true
         })
     end
 
@@ -47,7 +48,7 @@ Event.OnEvent(defines.events.on_chunk_generated, function (event)
 end)
 
 ---@param request Request<{ position: MapPosition.0, name: string, direction: defines.direction }>
----@return BoundingBox?, number?
+---@return BoundingBox?, number?, boolean?
 local function getAreaBuild(request)
     if not prototypes.item[request.data.name] then
         API.Failed(request, RequestError.ITEM_DOESNT_EXIST)
@@ -60,8 +61,9 @@ local function getAreaBuild(request)
     end
 
     local player = game.get_player(1) --[[@as LuaPlayer]]
-    local box = prototypes.entity[request.data.name].collision_box
-    return Area.Add(box, request.data.position), player.build_distance
+    local proto = prototypes.entity[request.data.name]
+    local box = proto.collision_box
+    return Area.Add(box, request.data.position), player.build_distance, proto.collision_mask.layers["player"]
 end
 
 ---Do NOT call this request direct. Use the Bot::Build function instead because it keeps the MapData object updated.
@@ -76,6 +78,9 @@ Instruction.AddRangedRequest("Build", function (request)
     end
 
     if not player.can_place_entity{ name = data.name, position = data.position, direction = data.direction } then
+        if table_size(storage.mine_requests) > 0 then
+            return true
+        end
         API.Failed(request, RequestError.NOT_ENOUGH_ROOM)
         return
     end
@@ -94,34 +99,59 @@ Instruction.AddRangedRequest("Build", function (request)
     API.Success(request)
 end, getAreaBuild)
 
----@param request Request<MapPosition.0>
+---@param request Request<{name: string, pos: MapPosition.0}>
 ---@return BoundingBox?, number?
 local function getAreaMine(request)
     local player = game.get_player(1) --[[@as LuaPlayer]]
-    player.update_selected_entity(request.data)
-    if not player.selected or not player.selected.valid then
+    local surface = game.get_surface(1) --[[@as LuaSurface]]
+    local entity = surface.find_entity(request.data.name, request.data.pos)
+    if not entity or not entity.valid then
         API.Failed(request, RequestError.NO_ENTITY_FOUND)
         return
     end
 
+    player.selected = entity
     return player.selected.bounding_box, player.reach_distance
 end
 
 local function MineUpdate()
-    if not storage.mine_request then return end
-
     local player = game.get_player(1) --[[@as LuaPlayer]]
-    player.update_selected_entity(storage.mine_request.data)
 
-    player.mining_state = { mining = true, position = storage.mine_request.data }
+    if not storage.current_mine_request then
+        for request, _ in pairs(storage.mine_requests) do
+            local area, range = getAreaMine(request)
+            if not area or not range then
+                storage.mine_requests[request] = nil
+                goto continue
+            end
+
+            if Area.SqDistanceTo(area, player.position) <= math.pow(range, 2) then
+                storage.current_mine_request = request
+            end
+            ::continue::
+        end
+    end
+
+    local request = storage.current_mine_request
+    if not request then return end
+
+    local surface = game.get_surface(1) --[[@as LuaSurface]]
+    local entity = surface.find_entity(request.data.name, request.data.pos)
+    if not entity or not entity.valid then
+        API.Failed(request, RequestError.NO_ENTITY_FOUND)
+        return
+    end
+
+    player.selected = entity
+    player.mining_state = { mining = true, position = storage.current_mine_request.data.pos }
 end
 
 ---Do NOT call this request direct. Use the Bot::Mine function instead because it keeps the MapData object updated.
----@param request Request<MapPosition.0>
-Instruction.AddRangedRequest("Mine", function (request)
-    storage.mine_request = request
+---@param request Request<{name: string, pos: MapPosition.0}>
+API.AddRequestHandler("Mine", function (request)
+    storage.mine_requests[request] = true
     MineUpdate()
-end, getAreaMine)
+end)
 
 Event.OnEvent(defines.events.on_tick, function (event)
     MineUpdate()
@@ -129,23 +159,25 @@ end)
 
 ---@param event EventData.on_player_mined_entity
 Event.OnEvent(defines.events.on_player_mined_entity, function (event)
-    if not storage.mine_request then return end
+    if not storage.current_mine_request then return end
 
     local items = {}
     for k, v in pairs(event.buffer.get_contents()) do
         items[v.name] = v.count
     end
 
-    storage.mine_request = nil
-    local player = game.get_player(1) --[[@as LuaPlayer]]
-    player.selected = nil
-    player.mining_state = { mining = false }
+    API.Success(storage.current_mine_request, items)
 
-    API.Success(storage.mine_request, items)
+    storage.mine_requests[storage.current_mine_request] = nil
+    storage.current_mine_request = nil
+
+    local player = game.get_player(1) --[[@as LuaPlayer]]
+    player.clear_selected_entity()
+    player.mining_state = { mining = false }
 end)
 
 ---@param request Request<{ position: MapPosition.0, entity: string }>
----@return BoundingBox?, number?
+---@return BoundingBox?, number?, boolean?
 local function getAreaReachEntity(request)
     if not prototypes.entity[request.data.entity] then
         API.Failed(request, RequestError.ENTITY_DOESNT_EXIST)
@@ -153,27 +185,9 @@ local function getAreaReachEntity(request)
     end
 
     local player = game.get_player(1) --[[@as LuaPlayer]]
-    local entity = player.surface.find_entity(request.data.entity, request.data.position)
-    if not entity then
-        API.Failed(request, RequestError.NO_ENTITY_FOUND)
-        return
-    end
-
-    return entity.bounding_box, player.reach_distance
-end
-
----@param request Request<{ position: MapPosition.0, entity: string }>
----@return BoundingBox?, number?
-local function getAreaReachEntityNoFail(request)
-    if not prototypes.entity[request.data.entity] then
-        API.Failed(request, RequestError.ENTITY_DOESNT_EXIST)
-        return
-    end
-
-    local player = game.get_player(1) --[[@as LuaPlayer]]
-    local bounding_box = Area.Add(prototypes.entity[request.data.entity].collision_box, request.data.position)
-
-    return bounding_box, player.reach_distance
+    local proto = prototypes.entity[request.data.entity]
+    local bounding_box = Area.Add(proto.collision_box, request.data.position)
+    return bounding_box, player.reach_distance, proto.collision_mask.layers["player"]
 end
 
 ---@type { [string]: fun(entity: LuaEntity, value: any) }
@@ -187,22 +201,16 @@ Instruction.AddRangedRequest("SetEntityProperty", function (request)
     local data = request.data
     local entity = game.get_surface(1).find_entity(data.entity, data.position)
     if not entity or not entity.valid then
-        log("not valid")
         return true
     end
-    if entity.position.x == -103.5 and entity.position.y == 31.5 then log(data.property) log(data.value) end
-    if entity.position.x == -103.5 and entity.position.y == 31.5 then log("a") end
     ---@cast entity - nil
 
     local setter = entity_property_setters[data.property]
     if setter then
-        if entity.position.x == -103.5 and entity.position.y == 31.5 then log("a") end
         setter(entity, data.value)
     else
-        if entity.position.x == -103.5 and entity.position.y == 31.5 then log("a") end
         entity[data.property] = data.value
     end
 
-    if entity.position.x == -103.5 and entity.position.y == 31.5 then log("a") end
     API.Success(request)
-end, getAreaReachEntityNoFail)
+end, getAreaReachEntity)

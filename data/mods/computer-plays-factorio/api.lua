@@ -136,6 +136,12 @@ function API.GetId()
     return storage.id
 end
 
+---@param message string
+function API.Info(message)
+    assert(type(message) == "string")
+    API.InvokeEvent("Info", message);
+end
+
 ---Throws an exception in the cpp side
 ---@param message string
 function API.Throw(message)

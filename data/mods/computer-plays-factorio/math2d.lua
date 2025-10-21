@@ -86,13 +86,31 @@ local function FormatBoundingBox(bounding_box)
     return r
 end
 
+---@param bounding_box BoundingBox
+local function FormatBoundingBoxOutArg(bounding_box)
+    local pos
+    if bounding_box.left_top then
+        pos = FormatMapPosition(bounding_box.left_top)
+    else
+        pos = FormatMapPosition(bounding_box[1])
+    end
+    bounding_box.left_top, bounding_box[1] = pos, pos
+
+    if bounding_box.right_bottom then
+        pos = FormatMapPosition(bounding_box.right_bottom)
+    else
+        pos = FormatMapPosition(bounding_box[2])
+    end
+    bounding_box.right_bottom, bounding_box[2] = pos, pos
+end
+
 ---@param object any
 ---@return boolean
 local function IsBoundingBox(object)
     if type(object) == "table" and
         (IsMapPosition(object.left_top) or IsMapPosition(object[1])) and
         (IsMapPosition(object.right_bottom) or IsMapPosition(object[2])) then
-        FormatBoundingBox(object)
+        FormatBoundingBoxOutArg(object)
         return true
     end
     return false
@@ -379,6 +397,20 @@ function Area.One()
     return FormatBoundingBox({{1,1}, {1,1}})
 end
 
+---@param area BoundingBox
+---@return MapPosition
+function Area.GetLeftBottom(area)
+    BoundingBoxCheck(area)
+    return FormatMapPosition({ area[1][1], area[2][2] })
+end
+
+---@param area BoundingBox
+---@return MapPosition
+function Area.GetRightTop(area)
+    BoundingBoxCheck(area)
+    return { area[2][1], area[1][2] }
+end
+
 ---@param v1 BoundingBox
 ---@param v2 MapPosition
 ---@return BoundingBox
@@ -471,12 +503,23 @@ function Area.CenterOfMass(box)
     })
 end
 
----@param box BoundingBox
----@param position MapPosition
-function Area.Contains(box, position)
-    BoundingBoxCheck(box)
-    MapPositionCheck(position)
-    return Area.SqDistanceTo(box, position) == 0
+---@param v1 BoundingBox
+---@param v2 BoundingBox | MapPosition
+---@return boolean
+---@overload fun(v1: BoundingBox, v2: MapPosition): boolean
+---@overload fun(v1: BoundingBox, v2: BoundingBox): boolean
+function Area.Contains(v1, v2)
+    if IsMapPosition(v2) then
+        BoundingBoxCheck(v1)
+        MapPositionCheck(v2)
+        return Area.SqDistanceTo(v1, v2) == 0
+    else
+        BoundingBoxCheck(v1, v2)
+        return Area.Contains(v1, v2.left_top) or
+            Area.Contains(v1, v2.right_bottom) or
+            Area.Contains(v1, Area.GetLeftBottom(v2)) or
+            Area.Contains(v1, Area.GetRightTop(v2))
+    end
 end
 
 return Math2d

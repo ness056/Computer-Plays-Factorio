@@ -13,7 +13,7 @@ local function EvaluatePath()
     local player = game.get_player(1) --[[@as LuaPlayer]]
 
     local walking_state = player.walking_state
-    if not storage.walk_request then
+    if not storage.walk_request or player.controller_type ~= defines.controllers.character then
         walking_state.walking = false
         player.walking_state = walking_state
         return
@@ -26,25 +26,17 @@ local function EvaluatePath()
     local speed = player.character.character_running_speed
     if Vector.SqLength(v) <= math.pow(speed, 2) then
         if storage.current_waypoint + 1 <= table_size(path) then
-            if storage.debug_path and storage.current_waypoint ~= 1 then
-                rendering.draw_circle{surface=1, color={255, 0, 0}, radius = 0.2, target=waypoint, filled=true}
-            end
-
             storage.current_waypoint = storage.current_waypoint + 1
-            EvaluatePath()
-        elseif not storage.is_walk_until then
-            if storage.debug_path then
-                rendering.draw_circle{surface=1, color={255, 255, 0}, radius = 0.2, target=waypoint, filled=true}
-                rendering.draw_circle{surface=1, color={255, 0, 255}, radius = player.build_distance, target=waypoint, width=4}
-            end
+            waypoint = path[storage.current_waypoint]
+            v = Vector.Sub(waypoint, player.character.position)
 
+        elseif not storage.is_walk_until then
             API.Success(storage.walk_request)
             storage.walk_request = nil
             walking_state.walking = false
             player.walking_state = walking_state
+            return
         end
-
-        return
     end
 
     local half_speed = speed / 2
@@ -96,7 +88,7 @@ API.AddRequestHandler("Walk", function (request)
 end)
 
 ---@param request Request<MapPosition.0[]>
-API.AddRequestHandler("WalkAndStay", function (request)
+API.AddRequestHandler("WalkUntil", function (request)
     if storage.walk_request then
         API.Failed(request, RequestError.BUSY)
         return
