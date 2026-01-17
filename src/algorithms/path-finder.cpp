@@ -34,12 +34,12 @@ namespace ComputerPlaysFactorio {
     std::expected<Path, Result> FindPath(
         const MapData &data,
         MapData::Branch branch,
-        const MapPosition &start,
-        const MapPosition &goal,
+        MapPosition start,
+        MapPosition goal,
         double radius
     ) {
-        assert(start.HalfRound() == start);
-        assert(goal.HalfRound() == goal);
+        start = start.HalfRound();
+        goal = goal.HalfRound();
 
         const double sq_radius = radius * radius;
         std::shared_ptr<Node> current = nullptr;

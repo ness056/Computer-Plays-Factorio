@@ -7,7 +7,7 @@ namespace ComputerPlaysFactorio {
 
     std::mutex ThreadPool::s_queue_mutex;
     std::condition_variable ThreadPool::s_mutex_cond;
-    std::vector<std::thread> ThreadPool::s_threads;
+    std::vector<std::jthread> ThreadPool::s_threads;
     std::condition_variable ThreadPool::s_working_cond;
     std::queue<std::function<void()>> ThreadPool::s_jobs;
 
@@ -82,7 +82,7 @@ namespace ComputerPlaysFactorio {
             s_stop = true;
         }
         s_mutex_cond.notify_all();
-        for (std::thread &active_thread : s_threads) {
+        for (std::jthread &active_thread : s_threads) {
             active_thread.join();
         }
         s_threads.clear();

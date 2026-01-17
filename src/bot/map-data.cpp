@@ -4,18 +4,20 @@
 
 namespace ComputerPlaysFactorio {
 
-    std::vector<Blueprint> Patch::GetBurnerCityBP(const MapPosition &attraction_point, int min_running_time, int amount, FactorioInstance&f) const {
+    std::vector<Blueprint> Patch::GetBurnerCityBP(const MapPosition &attraction_point, int min_running_time, int amount) const {
+        std::scoped_lock lock(m_mutex);
+
         std::vector<Blueprint> vec;
 
         const int min_resource_amount = min_running_time / 4;
         Direction attraction_direction = CardinalDirection((attraction_point - m_bounding_box.Center()).ToDirection());
         Blueprint blueprint;
         MapPosition step_vec;
-        if (GetName() == "coal") {
+        if (m_type == COAL) {
             blueprint = Blueprint::Load("core/burners/coal.txt");
             step_vec = MapPosition(0, -2);
         }
-        else if (GetName() == "stone") {
+        else if (m_type == STONE) {
             blueprint = Blueprint::Load("core/burners/stone.txt");
             step_vec = MapPosition(1, -4);
         }
@@ -33,18 +35,12 @@ namespace ComputerPlaysFactorio {
         MapPosition first;
         IterateFromClosestPointArea(
             attraction_point, {1, 0}, m_bounding_box,
-            [this, &first, &blueprint, min_resource_amount, &f](const MapPosition &pos) {
-                f.Request("DrawCircle", {
-                    { "position", pos },
-                    { "radius", 0.2 },
-                    { "color", { 255, 0, 0 } },
-                    { "filled", true }
-                });
+            [this, &first, &blueprint, min_resource_amount](const MapPosition &pos) {
                 blueprint.Shift(pos);
-                int resource_amount = ResourceAmountMin(blueprint);
+                int resource_amount = ResourceAmountMinNoLock(blueprint);
                 if (resource_amount > min_resource_amount &&
                     !m_map_data->PathfinderCollides(blueprint, MapData::PLANNING) &&
-                    !m_map_data->ResourceEntityCollides(blueprint, GetName())
+                    !m_map_data->ResourceEntityCollides(blueprint, m_type)
                 ) {
                     first = pos;
                     blueprint.Shift(-pos);
@@ -57,18 +53,12 @@ namespace ComputerPlaysFactorio {
 
         IterateFromClosestPointArea(
             first, step_vec, m_bounding_box,
-            [this, &vec, &first, &blueprint, min_resource_amount, amount, &f](const MapPosition &pos) {
-                f.Request("DrawCircle", {
-                    { "position", pos },
-                    { "radius", 0.2 },
-                    { "color", { 255, 255, 0 } },
-                    { "filled", true }
-                });
+            [this, &vec, &first, &blueprint, min_resource_amount, amount](const MapPosition &pos) {
                 blueprint.Shift(pos);
-                int resource_amount = ResourceAmountMin(blueprint);
+                int resource_amount = ResourceAmountMinNoLock(blueprint);
                 if (resource_amount > min_resource_amount &&
                     !m_map_data->PathfinderCollides(blueprint, MapData::PLANNING) &&
-                    !m_map_data->ResourceEntityCollides(blueprint, GetName())
+                    !m_map_data->ResourceEntityCollides(blueprint, m_type)
                 ) {
                     m_map_data->AddEntities(blueprint, MapData::PLANNING);
                     vec.emplace_back(blueprint);
@@ -88,7 +78,7 @@ namespace ComputerPlaysFactorio {
 
     // }
 
-    int Patch::ResourceAmount(const Entity &entity) const {
+    int Patch::ResourceAmountNoLock(const Entity &entity) const {
         assert(entity.GetType() == "mining-drill");
         int sum = 0;
         ForEachDiagonal([this, &sum, pos = entity.GetPosition()](Direction d) {
@@ -100,12 +90,12 @@ namespace ComputerPlaysFactorio {
         return sum;
     }
 
-    int Patch::ResourceAmountMin(const Blueprint &blueprint) const {
+    int Patch::ResourceAmountMinNoLock(const Blueprint &blueprint) const {
         int min = INFINITE >> 1;
         for (const auto &entity : blueprint.entities) {
             if (entity.GetType() != "mining-drill") continue;
 
-            int amount = ResourceAmount(entity);
+            int amount = ResourceAmountNoLock(entity);
             if (amount < min) {
                 min = amount;
             }
@@ -115,141 +105,69 @@ namespace ComputerPlaysFactorio {
 
     bool Chunk::Collides(const Area &bounding_box) const {
         for (const auto &entity : m_entities) {
-            if (entity.GetBoundingBox().Collides(bounding_box)) return true;
+            if (entity->GetBoundingBox().Collides(bounding_box)) return true;
         }
         return false;
-    }
-    
-    void MapData::NewCheckpoint() {        
-        if (CheckpointEmpty()) {
-            auto &checkpoint = m_checkpoints.emplace();
-            checkpoint.chunks = *GetChunks(MAIN);
-            checkpoint.tiles = *GetTiles(MAIN);
-        } else {
-            auto chunks = *GetChunks(BUILDING);
-            auto tiles = *GetTiles(BUILDING);
-
-            auto &checkpoint = m_checkpoints.emplace();
-            checkpoint.chunks = std::move(chunks);
-            checkpoint.tiles = std::move(tiles);
-        }
-    }
-
-    static void CheckpointValidationFailed() {
-        throw RuntimeErrorF("MapData checkpoint validation failed.");
-    }
-
-    void MapData::ValidateCheckpoint() {
-        std::scoped_lock lock(m_mutex);
-
-        const auto &checkpoint = m_checkpoints.front();
-
-        if (!checkpoint.position_set) CheckpointValidationFailed();
-
-        if ((checkpoint.final_player_position - m_player_position).Trunc() != MapPosition(0, 0)) {
-            CheckpointValidationFailed();
-        }
-
-        auto &tiles = m_tiles[MAIN];
-        auto &chunks = m_chunks[MAIN];
-
-        for (const auto &[pos, tile] : checkpoint.tiles) {
-            if (tile == TileType::NORMAL && tiles.contains(pos) && tiles[pos] != TileType::NORMAL) {
-                CheckpointValidationFailed();
-            } else if (tile == TileType::WATER && (!tiles.contains(pos) || tiles[pos] != TileType::WATER)) {
-                CheckpointValidationFailed();
-            }
-        }
-
-        for (const auto &[chunk_pos, chunk] : checkpoint.chunks) {
-            if (!chunks.contains(chunk_pos)) {
-                CheckpointValidationFailed();
-            }
-            const auto &other_chunk = chunks.at(chunk_pos);
-            
-            for (const auto &entity : chunk.m_entities) {
-                for (const auto &other_entity : other_chunk.m_entities) {
-                    if (entity == other_entity) {
-                        goto Found;
-                    }
-                }
-                CheckpointValidationFailed();
-                Found:;
-            }
-        }
-
-        m_checkpoints.pop();
-    }
-
-    void MapData::DestroyCheckpoints() {
-        std::scoped_lock lock(m_mutex);
-
-        while (!m_checkpoints.empty()) {
-            m_checkpoints.pop();
-        }
-
-        m_colliders_entity[BUILDING] = m_colliders_entity[MAIN];
-        m_colliders_tile[BUILDING] = m_colliders_tile[MAIN];
     }
 
     MapPosition MapData::GetPlayerPosition(Branch branch) const {
         assert(branch != PLANNING && "Cannot get the player position from the planning branch.");
 
         std::scoped_lock lock(m_mutex);
-
-        if (branch == MAIN || CheckpointEmpty() ) {
-            return m_player_position;
-        } else {
-            const auto &checkpoint = GetCheckpoint();
-            if (checkpoint.position_set) return checkpoint.final_player_position;
-            else throw RuntimeErrorF("Final player position not set.");
-        }
+        return m_player_positions[branch];
     }
 
     void MapData::SetPlayerPosition(const MapPosition &pos, Branch branch) {
         assert(branch != PLANNING && "Cannot set the player position in the planning branch.");
 
         std::scoped_lock lock(m_mutex);
-
-        if (branch == MAIN) {
-            m_player_position = pos;
-        } else {
-            auto &checkpoint = GetCheckpoint();
-            checkpoint.final_player_position = pos;
-            checkpoint.position_set = true;
-        }
+        m_player_positions[branch] = pos;
     }
 
-    void MapData::AddEntityNoLock(const Entity &entity, Branch branch, bool is_auto_place) {
+    std::future<void> MapData::UpdatePlayerMainInventory() {
+        auto inventory_future = m_instance->Request("GetInventory");
+        return std::async(std::launch::deferred, [this, inventory_future = std::move(inventory_future)] mutable {
+            inventory_future.wait();
+            m_player_main_inventory = inventory_future.get()["data"].get<Inventory>();
+        });
+    }
+
+    SEntity MapData::AddEntityNoLock(const Entity &entity, Branch branch, bool is_auto_place) {
         if (is_auto_place) {
             AddEntityNoLock(entity, MAIN, false);
             AddEntityNoLock(entity, BUILDING, false);
-            return;
+            return nullptr;
         }
-        auto chunks_ptr = GetChunks(branch);
-        if (chunks_ptr) {
-            auto &chunks = *chunks_ptr;
 
-            const auto chunk_position = entity.GetPosition().ChunkPosition();
-            if (!chunks.contains(chunk_position)) {
-                ChunkGeneratedNoLock(chunk_position, branch);
-            }
-
-            auto &chunk = chunks.at(chunk_position);
-            chunk.m_entities.push_back(entity);
+        auto &chunks = m_chunks.at(branch);
+        const auto chunk_position = entity.GetPosition().ChunkPosition();
+        if (!chunks.contains(chunk_position)) {
+            ChunkGeneratedNoLock(chunk_position, branch);
         }
+
+        auto &chunk = chunks.at(chunk_position);
+        auto s_entity = std::make_shared<Entity>(entity);
+        if (branch == MAIN) {
+            s_entity->SetInstance(m_instance);
+        } else {
+            s_entity->SetInstance(nullptr);
+        }
+        s_entity->SetValid(true);
+
+        chunk.m_entities.push_back(s_entity);
 
         if (entity.GetType() == "resource") {
-            auto patch = std::find_if(m_patchs.begin(), m_patchs.end(), [&entity](const Patch &patch) {
-                return patch.m_name == entity.GetName() && patch.m_bounding_box.Collides(entity.GetPosition());
+            auto patch_it = std::find_if(m_patchs.begin(), m_patchs.end(), [&entity](const SPatch &patch) {
+                return patch->TypeToString() == entity.GetName() && patch->GetBoundingBox().Collides(entity.GetPosition());
             });
             
-            auto &p = g_prototypes.Get(entity);
-            if (patch == m_patchs.end()) {
-                Patch::Type type = p.contains("category") && p["category"] == "basic-fluid" ? Patch::FLUID : Patch::NORMAL;
-                m_patchs.emplace_back(this, type, entity.GetName(), entity.GetPosition());
-                patch = --m_patchs.end();
+            if (patch_it == m_patchs.end()) {
+                auto patch = std::make_shared<Patch>(this, entity.GetName(), entity.GetPosition());
+                m_patchs.push_back(patch);
+                patch_it = --m_patchs.end();
             }
+            
+            auto patch = *patch_it;
 
             const auto &pos = entity.GetPosition();
             auto &left_top = patch->m_bounding_box.left_top,
@@ -263,14 +181,16 @@ namespace ComputerPlaysFactorio {
             if (pos.y <= left_top.y) left_top.y = pos.y - 1;
             else if (pos.y >= right_bottom.y) right_bottom.y = pos.y + 1;
 
-            std::list<Patch>::iterator other;
-            while ((other = std::find_if(m_patchs.begin(), m_patchs.end(), [&](const Patch &other) {
-                return &*patch != &other && patch->m_name == other.m_name && patch->m_bounding_box.Collides(other.m_bounding_box);
+            std::vector<SPatch>::iterator other_it;
+            while ((other_it = std::find_if(m_patchs.begin(), m_patchs.end(), [&](const SPatch &other) {
+                return patch != other && patch->m_type == other->GetType() && patch->m_bounding_box.Collides(other->GetBoundingBox());
             })) != m_patchs.end()) {
+                auto &other = *other_it;
+
                 patch->m_resource_amount += other->m_resource_amount;
 
                 auto &other_left_top = other->m_bounding_box.left_top,
-                     &other_right_bottom = other->m_bounding_box.right_bottom;
+                        &other_right_bottom = other->m_bounding_box.right_bottom;
 
                 if (other_left_top.x <= left_top.x) left_top.x = other_left_top.x;
                 else if (other_right_bottom.x >= right_bottom.x) right_bottom.x = other_right_bottom.x;
@@ -280,12 +200,12 @@ namespace ComputerPlaysFactorio {
 
                 patch->m_resources.insert(other->m_resources.begin(), other->m_resources.end());
 
-                m_patchs.erase(other);
+                m_patchs.erase(other_it);
             }
         }
 
         auto collides_with_player = g_prototypes.HasCollisionMask(entity, "player");
-        if (!collides_with_player) return;
+        if (!collides_with_player) return s_entity;
 
         // Update pathfinder data
         
@@ -300,32 +220,30 @@ namespace ComputerPlaysFactorio {
             for (double y1 = HalfCeil(entity.GetBoundingBox().left_top.y - n); y1 <= y2; y1 += 0.5) {
                 if (!collisions.contains({x1, y1})) {
                     collisions.emplace(x1, y1);
-                    if (is_auto_place) {
-                        m_colliders_entity[BUILDING].emplace(x1, y1);
-                    }
                 }
             }
         }
+
+        return s_entity;
     }
 
-    void MapData::AddEntity(const Entity &entity, Branch branch, bool is_auto_place) {
+    SEntity MapData::AddEntity(const Entity &entity, Branch branch, bool is_auto_place) {
         std::scoped_lock lock(m_mutex);
-        AddEntityNoLock(entity, branch, is_auto_place);
+        return AddEntityNoLock(entity, branch, is_auto_place);
     }
 
-    void MapData::AddEntities(const Blueprint &blueprint, Branch branch) {
+    std::vector<SEntity> MapData::AddEntities(const Blueprint &blueprint, Branch branch) {
+        std::vector<SEntity> vec;
         for (const auto &entity : blueprint.entities) {
-            AddEntity(entity, branch);
+            vec.push_back(AddEntity(entity, branch));
         }
+        return vec;
     }
 
     void MapData::RemoveEntity(const std::string &name, const MapPosition &pos, Branch branch) {
         std::scoped_lock lock(m_mutex);
         
-        auto chunks_ptr = GetChunks(branch);
-        if (!chunks_ptr) return;
-        auto &chunks = *chunks_ptr;
-
+        auto &chunks = m_chunks.at(branch);
         auto chunk_position = pos.ChunkPosition();
         if (!chunks.contains(chunk_position)) {
             Warn("Tried to remove entity from mapData in a chunk that is not generated.");
@@ -335,13 +253,15 @@ namespace ComputerPlaysFactorio {
         auto &chunk = chunks.at(chunk_position);
         auto &entities = chunk.m_entities;
 
-        const auto entity_it = std::find_if(entities.begin(), entities.end(), [&](const Entity &e) {
-            return e.GetName() == name && e.GetPosition() == pos;
+        const auto entity_it = std::find_if(entities.begin(), entities.end(), [&](const SEntity &e) {
+            return e->GetName() == name && e->GetPosition() == pos;
         });
+        const auto entity = *entity_it;
 
-        Area bounding_box = entity_it->GetBoundingBox();
-        auto collides_with_player = g_prototypes.HasCollisionMask(*entity_it, "player");
-        const auto placeable_off_grid = g_prototypes.HasFlag(*entity_it, "placeable-off-grid");
+        Area bounding_box = entity->GetBoundingBox();
+        auto collides_with_player = g_prototypes.HasCollisionMask(*entity, "player");
+        const auto placeable_off_grid = g_prototypes.HasFlag(*entity, "placeable-off-grid");
+        entity->SetValid(false);
         entities.erase(entity_it);
 
         if (!collides_with_player) return;
@@ -363,15 +283,32 @@ namespace ComputerPlaysFactorio {
         }
     }
 
-    std::optional<Entity> MapData::FindEntityType(const Area &area, const std::set<std::string> &types, Branch branch) const {
+    std::vector<SEntity> MapData::FindEntities(Branch branch, std::function<bool(const SEntity&)> callback) const {
         std::scoped_lock lock(m_mutex);
+
+        std::vector<SEntity> found;
+        const auto &chunks = m_chunks.at(branch);
+
+        for (const auto &[chunk_pos, chunk] : chunks) {
+            for (auto &entity : chunk.m_entities) {
+                if (!entity->IsValid()) continue;
+                if (!callback || callback(entity)) {
+                    found.push_back(entity);
+                }
+            }
+        }
+
+        return found;
+    }
+
+    std::vector<SEntity> MapData::FindEntities(const Area &area, Branch branch, std::function<bool(const SEntity&)> callback) const {
+        std::scoped_lock lock(m_mutex);
+
+        std::vector<SEntity> vec;
+        const auto &chunks = m_chunks.at(branch);
 
         auto chunk_pos_first = area.left_top.ChunkPosition();
         auto chunk_pos_last = area.right_bottom.ChunkPosition();
-
-        auto chunks_ptr = GetChunksC(branch);
-        if (!chunks_ptr) return std::nullopt;
-        auto &chunks = *chunks_ptr;
 
         for (double x = chunk_pos_first.x; x <= chunk_pos_last.x; x++) {
             for (double y = chunk_pos_first.y; y <= chunk_pos_last.y; y++) {
@@ -379,28 +316,27 @@ namespace ComputerPlaysFactorio {
                 if (!chunks.contains(chunk_pos)) continue;
                 auto &entities = chunks.at(chunk_pos).m_entities;
                 for (auto &entity : entities) {
-                    if (types.contains(entity.GetType()) && area.Collides(entity.GetBoundingBox())) {
-                        return entity;
+                    if (!entity->IsValid()) continue;
+                    if ((!callback || callback(entity)) && area.Collides(entity->GetBoundingBox())) {
+                        vec.push_back(entity);
                     }
                 }
             }
         }
 
-        return std::nullopt;
+        return vec;
     }
 
-    Entity* MapData::FindEntity(const std::string &name, const MapPosition &pos, Branch branch) {
+    SEntity MapData::FindEntity(const std::string &name, const MapPosition &pos, Branch branch) {
         std::scoped_lock lock(m_mutex);
 
         auto chunk_pos = pos.ChunkPosition();
-        auto chunks_ptr = GetChunks(branch);
-        if (!chunks_ptr) return nullptr;
-        auto &chunks = *chunks_ptr;
+        const auto &chunks = m_chunks.at(branch);
 
         if (!chunks.contains(chunk_pos)) return nullptr;
         auto &entities = chunks.at(chunk_pos).m_entities;
         for (auto &entity : entities) {
-            if (entity.GetName() == name && entity.GetPosition() == pos) return &entity;
+            if (entity->GetName() == name && entity->GetPosition() == pos) return entity;
         }
 
         return nullptr;
@@ -409,9 +345,7 @@ namespace ComputerPlaysFactorio {
     TileType MapData::GetTile(const MapPosition &pos, Branch branch) const {
         std::scoped_lock lock(m_mutex);
 
-        auto tiles_op = GetTilesC(branch);
-        if (!tiles_op) return TileType::NORMAL;
-        auto &tiles = *tiles_op;
+        auto &tiles = m_tiles.at(branch);
 
         if (!tiles.contains(pos)) return TileType::NORMAL;
         else return tiles.at(pos);
@@ -421,9 +355,7 @@ namespace ComputerPlaysFactorio {
         std::scoped_lock lock(m_mutex);
 
         if (is_auto_place) branch = MAIN;
-        auto tiles_op = GetTiles(branch);
-        if (!tiles_op) return;
-        auto &tiles = *tiles_op;
+        auto &tiles = m_tiles.at(branch);
 
         TileType old = TileType::NORMAL;
         if (tiles.contains(pos)) old = tiles.at(pos);
@@ -498,11 +430,11 @@ namespace ComputerPlaysFactorio {
                 if (!colliders.contains(corner)) continue;
                 for (int j : {0, 1, 3}) {
                     auto other_pos = corner + diagonal_vecs[(i + j) % 4];
-                    if (tiles[other_pos] == TileType::WATER) goto ContinueTwice;
+                    if (tiles[other_pos] == TileType::WATER) goto ContinueOuterLoop;
                 }
                 colliders.erase(corner);
             }
-            ContinueTwice:;
+            ContinueOuterLoop:;
         }
     }
 
@@ -512,9 +444,7 @@ namespace ComputerPlaysFactorio {
     }
 
     void MapData::ChunkGeneratedNoLock(const MapPosition &chunk_position, Branch branch) {
-        auto chunks_ptr = GetChunks(branch);
-        if (!chunks_ptr) return;
-        auto &chunks = *chunks_ptr;
+        auto &chunks = m_chunks.at(branch);
 
         if (chunks.contains(chunk_position)) return;
         chunks.emplace(chunk_position, chunk_position);
@@ -616,10 +546,12 @@ namespace ComputerPlaysFactorio {
         }
     }
 
-    bool MapData::ResourceEntityCollides(const MapPosition &pos, const std::string &name) const {
+    bool MapData::ResourceEntityCollides(const MapPosition &pos, Patch::Type type) const {
+        std::scoped_lock lock(m_mutex);
+
         for (const auto &patch : m_patchs) {
-            if (patch.m_resources.contains(pos)) {
-                if (patch.GetName() != name) return true;
+            if (patch->m_resources.contains(pos)) {
+                if (patch->GetType() != type) return true;
                 else return false;
             }
         }
@@ -627,31 +559,31 @@ namespace ComputerPlaysFactorio {
         return false;
     }
 
-    bool MapData::ResourceEntityCollides(const Area &area, const std::string &name) const {
+    bool MapData::ResourceEntityCollides(const Area &area, Patch::Type type) const {
         const double x2 = HalfCeil(area.right_bottom.x);
         const double y2 = HalfCeil(area.right_bottom.y);
 
         for (double x = HalfFloor(area.left_top.x); x <= x2; x += 0.5) {
             for (double y = HalfFloor(area.left_top.y); y <= y2; y += 0.5) {
-                if (ResourceEntityCollides(MapPosition(x, y), name)) return true;
+                if (ResourceEntityCollides(MapPosition(x, y), type)) return true;
             }
         }
 
         return false;
     }
 
-    bool MapData::ResourceEntityCollides(const Blueprint &blueprint, const std::string &name) const {
+    bool MapData::ResourceEntityCollides(const Blueprint &blueprint, Patch::Type type) const {
         for (const auto &entity : blueprint.entities) {
             if (entity.GetType() == "mining-drill") {
                 double radius = entity.GetPrototype()["resource_searching_radius"].get<double>();
-                if (ResourceEntityCollides(Area(entity.GetPosition(), radius), name)) return true;
+                if (ResourceEntityCollides(Area(entity.GetPosition(), radius), type)) return true;
             }
         }
 
         return false;
     }
 
-    void MapData::ForPatchs(std::function<void(const Patch&)> callback) const {
+    void MapData::ForPatchs(std::function<void(const SPatch&)> callback) const {
         std::scoped_lock lock(m_mutex);
 
         for (const auto &patch : m_patchs) {
@@ -659,23 +591,24 @@ namespace ComputerPlaysFactorio {
         }
     }
 
-    void MapData::DrawPathfinderData(FactorioInstance &f, Branch branch) const {
+    void MapData::DrawPathfinderData(Branch branch) {
+        if (!m_instance) return;
         json chunk_json(m_colliders_chunk);
-        f.Request("DrawRectangleBulk", {
+        m_instance->Request("DrawRectangleBulk", {
             { "positions", chunk_json },
             { "side_length", 0.4 },
             { "color", { 0, 255, 0 } },
             { "filled", false }
         });
         json entity_json(m_colliders_entity.at(branch));
-        f.Request("DrawRectangleBulk", {
+        m_instance->Request("DrawRectangleBulk", {
             { "positions", entity_json },
             { "side_length", 0.4 },
             { "color", { 255, 0, 0 } },
             { "filled", false }
         });
         json tile_json(m_colliders_tile.at(branch));
-        f.Request("DrawRectangleBulk", {
+        m_instance->Request("DrawRectangleBulk", {
             { "positions", tile_json },
             { "side_length", 0.4 },
             { "color", { 0, 0, 255 } },
@@ -683,20 +616,23 @@ namespace ComputerPlaysFactorio {
         });
     }
 
-    void MapData::DrawPatchs(FactorioInstance &instance) const {
+    void MapData::DrawPatchs() {
+        std::scoped_lock lock(m_mutex);
+
+        if (!m_instance) return;
         for (const auto &patch : m_patchs) {
             auto color = std::make_tuple(std::rand() % 256, std::rand() % 256, std::rand() % 256);
 
-            for (const auto &[pos, amount] : patch.m_resources) {
-                instance.Request("DrawRectangle", {
+            for (const auto &[pos, amount] : patch->m_resources) {
+                m_instance->Request("DrawRectangle", {
                     { "area", Area(pos, 0.3) },
                     { "color", color },
                     { "filled", false }
                 });
             }
 
-            instance.Request("DrawRectangle", {
-                { "area", patch.m_bounding_box },
+            m_instance->Request("DrawRectangle", {
+                { "area", patch->m_bounding_box },
                 { "color", { 255, 0, 255 } },
                 { "filled", false }
             });

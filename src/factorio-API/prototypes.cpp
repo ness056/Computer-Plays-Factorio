@@ -40,7 +40,7 @@ namespace ComputerPlaysFactorio {
             if (!m_prototypes.contains(type)) continue; // I'm too lazy to manually remove space age types
             if (m_prototypes[type].contains(name)) return m_prototypes[type][name];
         }
-        throw RuntimeErrorF("Not entity prototype with name \"{}\" exists", name);
+        throw RuntimeErrorF("No entity prototype with name \"{}\" exists", name);
     }
 
     bool FactorioPrototypes::HasFlag(const json &prototype, const std::string &flag) const {
@@ -66,7 +66,7 @@ namespace ComputerPlaysFactorio {
 
     void FactorioPrototypes::CheckValid() const {
         if (!valid) {
-            throw RuntimeErrorF("You must call g_prototypes.Fetch() but calling any other methods.");
+            throw RuntimeErrorF("You must call g_prototypes.Fetch() before calling any other methods.");
         }
     }
 }

@@ -26,7 +26,7 @@ namespace ComputerPlaysFactorio {
         static bool s_stop;
         static std::mutex s_queue_mutex;
         static std::condition_variable s_mutex_cond;
-        static std::vector<std::thread> s_threads;
+        static std::vector<std::jthread> s_threads;
         static int s_working_thread;
         static std::condition_variable s_working_cond;
         static std::queue<std::function<void()>> s_jobs;

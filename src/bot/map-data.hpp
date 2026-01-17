@@ -7,9 +7,7 @@
 #include <mutex>
 #include <expected>
 
-#include "../factorio-API/factorio-API.hpp"
 #include "../factorio-API/prototypes.hpp"
-#include "../factorio-API/types.hpp"
 
 namespace ComputerPlaysFactorio {
 
@@ -18,40 +16,92 @@ namespace ComputerPlaysFactorio {
     class Patch {
     public:
         enum Type {
-            NORMAL,
-            FLUID
+            IRON,
+            COPPER,
+            COAL,
+            STONE,
+            OIL
         };
 
+        static constexpr Type StringToType(const std::string &s) {
+            if (s == "iron-ore") return IRON;
+            else if (s == "copper-ore") return COPPER;
+            else if (s == "coal") return COAL;
+            else if (s == "stone") return STONE;
+            else return OIL;
+        }
+
+        static constexpr std::string TypeToString(Type p) {
+            switch (p) {
+                case IRON: return "iron-ore";
+                case COPPER: return "copper-ore";
+                case COAL: return "coal";
+                case STONE: return "stone";
+                case OIL: return "crude-oil";
+                default: throw;
+            }
+        }
+
+        constexpr std::string TypeToString() const { return TypeToString(m_type); }
+
         Patch() = default;
-        Patch(MapData* map_data, Type type, const std::string &name, MapPosition first_pos) :
+        Patch(MapData *map_data, Type type, MapPosition first_pos) :
             m_map_data(map_data),
             m_type(type),
-            m_name(name),
             m_bounding_box(first_pos - MapPosition(1, 1), first_pos + MapPosition(1, 1)) {}
+        Patch(MapData *map_data, const std::string &type, MapPosition first_pos) :
+            Patch(map_data, StringToType(type), first_pos) {}
 
         // The burner city will be placed as close as possible to the attraction_point.
         // For example, that point may be the average position of all the patches of the burner city so that everything is close together.
-        std::vector<Blueprint> GetBurnerCityBP(const MapPosition &attraction_point, int min_running_time, int amount, FactorioInstance&f) const;
+        std::vector<Blueprint> GetBurnerCityBP(const MapPosition &attraction_point, int min_running_time, int amount) const;
         // output_direction can only be NORTH, SOUTH, WEST or EAST.
         Blueprint GetElectricBP(Direction output_direction, int min_running_time, int amount = -1) const;
 
-        int ResourceAmount(const Entity&) const;
-        int ResourceAmountMin(const Blueprint&) const;
+        inline int ResourceAmount(const Entity &entity) const {
+            std::scoped_lock lock(m_mutex);
+            return ResourceAmountNoLock(entity);
+        }
+
+        inline int ResourceAmountMin(const Blueprint &blueprint) const {
+            std::scoped_lock lock(m_mutex);
+            return ResourceAmountMinNoLock(blueprint);
+        }
 
         inline Type GetType() const { return m_type; }
-        inline const std::string &GetName() const { return m_name; }
-        inline Area GetBoundingBox() const { return m_bounding_box; }
+        inline Area GetBoundingBox() const { std::scoped_lock lock(m_mutex); return m_bounding_box; }
 
     private:
+        // Calling function should lock m_mutex.
+        int ResourceAmountNoLock(const Entity&) const;
+        // Calling function should lock m_mutex.
+        int ResourceAmountMinNoLock(const Blueprint&) const;
+
         friend class MapData;
         MapData *m_map_data;
-        Type m_type;
-        std::string m_name;
+        const Type m_type;
         std::unordered_map<MapPosition, int> m_resources;
 
         int m_resource_amount = 0;
         Area m_bounding_box;
+
+        mutable std::mutex m_mutex;
     };
+
+    using SPatch = std::shared_ptr<Patch>;
+
+    constexpr Patch::Type& operator++(Patch::Type& a) {
+        int n = static_cast<int>(a);
+        ++n;
+        a = static_cast<Patch::Type>(n);
+        return a;
+    }
+
+    constexpr Patch::Type operator++(Patch::Type& a, int) {
+        Patch::Type copy = a;
+        ++a;
+        return copy;
+    }
 
     class Chunk {
     public:
@@ -62,7 +112,7 @@ namespace ComputerPlaysFactorio {
     private:
         friend class MapData;
         MapPosition m_position;
-        std::list<Entity> m_entities;
+        std::list<SEntity> m_entities;
     };
 
     class MapData {
@@ -75,34 +125,27 @@ namespace ComputerPlaysFactorio {
             // Should be used to plan the position of whatever the bot will build in middle to long term.
             PLANNING,
             // Contains the expected map data when the bot will be done building whatever it's building.
-            // Should be used for validation when the bot is building (see rest of this comment) and to plan short
-            // term things like pathing.
-            // Contrary to the 2 other branches, this one has a queue of checkpoints.
-            // At the beginning of each task, a new checkpoint should be queued and then validated using
-            // the ValidateCheckpoint function at the end of the task. This function compares the MAIN branch with
-            // whatever was added to the BUILDING branch between the queueing of the front checkpoint and the
-            // queueing of the next one to check that everything that was expected to be built was built.
-            // The bot should react if the validation fails (by retrying the task, canceling it, crashing...)
+            // Should be used for to plan short term things like pathing.
             BUILDING
         };
 
-        void NewCheckpoint();
-        inline bool CheckpointEmpty() const {
-            return m_checkpoints.empty();
-        }
-        void ValidateCheckpoint();
-        void DestroyCheckpoints();
+        MapData(FactorioInstance *instance) : m_instance(instance) { assert(instance != nullptr); }
 
         MapPosition GetPlayerPosition(Branch) const;
         void SetPlayerPosition(const MapPosition &pos, Branch);
+
+        inline Inventory GetPlayerMainInventory() const { return m_player_main_inventory; }
+        std::future<void> UpdatePlayerMainInventory();
         
         // branch is ignored if is_auto_place is true
-        void AddEntity(const Entity&, Branch, bool is_auto_place = false);
-        void AddEntities(const Blueprint&, Branch);
+        SEntity AddEntity(const Entity&, Branch, bool is_auto_place = false);
+        std::vector<SEntity> AddEntities(const Blueprint&, Branch);
         void RemoveEntity(const std::string &name, const MapPosition &pos, Branch);
         template <class T>
         void UpdateEntity(const std::string &name, const MapPosition &pos, const std::string &property, const T &value, Branch);
-        std::optional<Entity> FindEntityType(const Area &area, const std::set<std::string> &types, Branch) const;
+
+        std::vector<SEntity> FindEntities(Branch, std::function<bool(const SEntity&)>) const;
+        std::vector<SEntity> FindEntities(const Area&, Branch, std::function<bool(const SEntity&)> = nullptr) const;
 
         TileType GetTile(const MapPosition &pos, Branch) const;
         // branch is ignored if is_auto_place is true
@@ -116,95 +159,37 @@ namespace ComputerPlaysFactorio {
 
         MapPosition FindNonCollidingPosition(MapPosition, Branch) const;
 
-        bool ResourceEntityCollides(const MapPosition&, const std::string &name) const;
-        bool ResourceEntityCollides(const Area&, const std::string &name) const;
-        bool ResourceEntityCollides(const Blueprint&, const std::string &name) const;
+        bool ResourceEntityCollides(const MapPosition&, Patch::Type type) const;
+        bool ResourceEntityCollides(const Area&, Patch::Type type) const;
+        bool ResourceEntityCollides(const Blueprint&, Patch::Type type) const;
 
-        void ForPatchs(std::function<void(const Patch&)> callback) const;
+        void ForPatchs(std::function<void(const SPatch&)> callback) const;
 
         // Debug function
-        void DrawPathfinderData(FactorioInstance&, Branch) const;
-        void DrawPatchs(FactorioInstance&) const;
+        void DrawPathfinderData(Branch);
+        void DrawPatchs();
 
     private:
-        struct Checkpoint {
-            bool position_set = false;
-            MapPosition final_player_position;
-            std::unordered_map<MapPosition, Chunk> chunks;
-            std::unordered_map<MapPosition, TileType> tiles;
-        };
 
-        Entity* FindEntity(const std::string &name, const MapPosition &pos, Branch);
+        SEntity FindEntity(const std::string &name, const MapPosition &pos, Branch);
 
-        inline const Checkpoint &GetCheckpoint() const {
-            if (CheckpointEmpty()) throw RuntimeErrorF("No checkpoint exists.");
-            return m_checkpoints.back();
-        }
-        inline Checkpoint &GetCheckpoint() {
-            if (CheckpointEmpty()) throw RuntimeErrorF("No checkpoint exists.");
-            return m_checkpoints.back();
-        }
-
-        inline std::unordered_map<MapPosition, Chunk> *GetChunks(Branch branch) {
-            if (branch == BUILDING) {
-                if (CheckpointEmpty()) return nullptr;
-                return &GetCheckpoint().chunks;
-            }
-            return &m_chunks[branch];
-        }
-        inline std::unordered_map<MapPosition, TileType> *GetTiles(Branch branch) {
-            if (branch == BUILDING) {
-                if (CheckpointEmpty()) return nullptr;
-                return &GetCheckpoint().tiles;
-            }
-            return &m_tiles[branch];
-        }
-        inline const std::unordered_map<MapPosition, Chunk> *GetChunksC(Branch branch) const {
-            if (branch == BUILDING) {
-                if (CheckpointEmpty()) return nullptr;
-                return &GetCheckpoint().chunks;
-            }
-            return &m_chunks.at(branch);
-        }
-        inline const std::unordered_map<MapPosition, TileType> *GetTilesC(Branch branch) const {
-            if (branch == BUILDING) {
-                if (CheckpointEmpty()) return nullptr;
-                return &GetCheckpoint().tiles;
-            }
-            return &m_tiles.at(branch);
-        }
-
-        void AddEntityNoLock(const Entity&, Branch, bool is_auto_place);
+        SEntity AddEntityNoLock(const Entity&, Branch, bool is_auto_place);
 
         void ChunkGeneratedNoLock(const MapPosition &chunkPos, Branch);
 
-        MapPosition m_player_position;
+        std::array<MapPosition, 3> m_player_positions;
+        Inventory m_player_main_inventory;
 
-        std::map<Branch, std::unordered_map<MapPosition, Chunk>> m_chunks = {
-            { MAIN, {} },
-            { PLANNING, {} }
-        };
-        std::map<Branch, std::unordered_map<MapPosition, TileType>> m_tiles = {
-            { MAIN, {} },
-            { PLANNING, {} }
-        };
+        std::array<std::unordered_map<MapPosition, Chunk>, 3> m_chunks;
+        std::array<std::unordered_map<MapPosition, TileType>, 3> m_tiles;
         
         std::unordered_set<MapPosition> m_colliders_chunk;
-        std::map<Branch, std::unordered_set<MapPosition>> m_colliders_entity = {
-            { MAIN, {} },
-            { PLANNING, {} },
-            { BUILDING, {} }
-        };
-        std::map<Branch, std::unordered_set<MapPosition>> m_colliders_tile = {
-            { MAIN, {} },
-            { PLANNING, {} },
-            { BUILDING, {} }
-        };
+        std::array<std::unordered_set<MapPosition>, 3> m_colliders_entity;
+        std::array<std::unordered_set<MapPosition>, 3> m_colliders_tile;
 
-        // Checkpoints and branch use the same type.
-        std::queue<Checkpoint, std::list<Checkpoint>> m_checkpoints;
+        std::vector<SPatch> m_patchs;
 
-        std::list<Patch> m_patchs;
+        FactorioInstance *m_instance;
 
         mutable std::mutex m_mutex;
     };

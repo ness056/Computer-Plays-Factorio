@@ -1,8 +1,21 @@
 local Utils = {}
 
 local API = require("__computer-plays-factorio__.api")
+local Event = require("__computer-plays-factorio__.event")
 local Math2d = require("__computer-plays-factorio__.math2d")
 local Vector = Math2d.Vector
+
+---@param position MapPosition
+---@param text LocalisedString
+function Utils.CreateFlyingText(position, text)
+    for _, player in pairs(game.connected_players) do
+        player.create_local_flying_text{
+            position = position,
+            text = text,
+            surface = 1
+        }
+    end
+end
 
 ---@generic T
 ---@param table T[]
@@ -72,6 +85,10 @@ commands.add_command("draw_patchs", "", function (c)
     API.InvokeEvent("DrawPatchs");
 end)
 
+Event.OnEvent(defines.events.on_tick, function (event)
+    API.InvokeEvent("UpdateTick", game.tick)
+end)
+
 ---@param request Request<string>
 API.AddRequestHandler("Broadcast", function (request)
     game.print(request.data)
@@ -92,11 +109,6 @@ end)
 API.AddRequestHandler("Save", function (request)
     game.auto_save(request.data)
     API.Success(request)
-end)
-
-API.AddRequestHandler("PlayerPosition", function (request)
-    local player = game.get_player(1)
-    API.Success(request, player and player.position or nil)
 end)
 
 ---@param request Request<{position: MapPosition.0, radius: number, color: Color, filled: boolean}>

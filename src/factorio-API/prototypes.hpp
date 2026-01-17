@@ -1,6 +1,6 @@
 #pragma once
 
-#include "factorio-API.hpp"
+#include "types.hpp"
 
 namespace ComputerPlaysFactorio {
 

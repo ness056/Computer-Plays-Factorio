@@ -1,5 +1,6 @@
 #pragma once
 
+#define _USE_MATH_DEFINES
 #include <cstring>
 #include <iostream>
 #include <fstream>
@@ -29,7 +30,6 @@
 #error "Only Windows is supported for now"
 #endif
 
-#include "types.hpp"
 #include "../utils/logging.hpp"
 
 /**
@@ -114,13 +114,18 @@ namespace ComputerPlaysFactorio {
         // Blocks the thread to wait for Factorio to stop !
         ~FactorioInstance();
 
-        FactorioInstance(const FactorioInstance&)  = delete;
-        void operator=(const FactorioInstance&)    = delete;
+        FactorioInstance(const FactorioInstance&)   = delete;
+        void operator=(const FactorioInstance&)     = delete;
+        FactorioInstance(const FactorioInstance&&)  = delete;
+        void operator=(const FactorioInstance&&)    = delete;
 
         bool Running();
         Result Start(uint32_t seed);
         void Stop();
         void Join(int ms = -1);
+
+        int GetTick();
+        std::future<void> NotifyIn(int tick);   // Sets the future in the given amount of tick
 
         // Called when a save was loaded/created and you may start sending requests
         inline void SetReadyCallback(const std::function<void()> &callback) {
@@ -139,23 +144,12 @@ namespace ComputerPlaysFactorio {
 
         Result SendRCON(const std::string &data, RCONPacketType type = RCON_EXECCOMMAND) const;
 
-        // You can get the response to a request either with a std::future or with a callback.
-        // This is because in most cases std::futures are easier to use and don't have any drawbacks.
-        // However, in some specific cases, using a callback is better, and supporting both doesn't cost much.
         std::future<json> Request(const std::string &name);
         std::future<json> Request(const std::string &name, const json &data);
         template<class T>
         std::future<json> Request(const std::string &name, const T &data) {
             json j(data);
             return Request(name, j);
-        }
-
-        void Request(const std::string &name, std::function<void(const json&)> callback);
-        void Request(const std::string &name, const json &data, std::function<void(const json&)> callback);
-        template<class T>
-        void Request(const std::string &name, const T &data, std::function<void(const json&)> callback) {
-            json j(data);
-            return Request(name, j, callback);
         }
 
         inline auto Broadcast(const std::string &msg) { return Request("Broadcast", msg); }
@@ -169,7 +163,6 @@ namespace ComputerPlaysFactorio {
         const Type instance_type;
 
     private:
-
         static void InitStatic();
         static inline std::mutex s_static_mutex;
         static inline bool s_init_static = false;
@@ -180,6 +173,15 @@ namespace ComputerPlaysFactorio {
         static inline std::set<FactorioInstance*> s_instances;
 
         static inline std::string s_factorio_path = "";
+
+        using TickNotifier = std::pair<int, std::shared_ptr<std::promise<void>>>;
+        struct TickNotifierComp {
+            bool operator()(const TickNotifier &lhs, const TickNotifier &rhs) {
+                return lhs.first > rhs.first;
+            }
+        };
+        int m_tick = 0;
+        std::priority_queue<TickNotifier, std::vector<TickNotifier>, TickNotifierComp> m_tick_notifiers;
 
         std::mutex m_mutex;
         DWORD m_exit_code;
@@ -201,7 +203,7 @@ namespace ComputerPlaysFactorio {
         int ReadStdout(char *buffer, int size);
         void CheckWord(const std::string &previous_word, const std::string &word);
         void OutListener(terminate_handler terminate);
-        std::thread m_out_listener;
+        std::jthread m_out_listener;
 
         inline std::filesystem::path GetInstanceTempDir() { return GetTempDirectory() / ("data" + std::to_string(m_id)); }
         inline std::filesystem::path GetConfigPath() { return GetInstanceTempDir() / "config.ini"; }
@@ -209,7 +211,6 @@ namespace ComputerPlaysFactorio {
         std::map<uint32_t, std::function<void(const json&)>> m_pending_requests;
 
         std::future<json> RequestPrivate(const std::string &name, const json*);
-        void RequestPrivate(const std::string &name, const json*, std::function<void(const json&)> callback);
 
         std::map<std::string, std::function<void(const json &data)>> m_event_handlers;
 

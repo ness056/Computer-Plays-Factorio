@@ -25,8 +25,8 @@ add_executable(${PROJECT_NAME}
     src/app.cpp
     src/bot/bot.hpp
     src/bot/bot.cpp
-    src/bot/task.hpp
-    src/bot/task.cpp
+    src/bot/scheduler.hpp
+    src/bot/scheduler.cpp
     src/bot/map-data.hpp
     src/bot/map-data.cpp
     src/factorio-API/prototypes.hpp
@@ -55,7 +55,6 @@ set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 23)
 
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX /Zc:preprocessor)
-    set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "/PROFILE")
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()

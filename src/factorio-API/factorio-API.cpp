@@ -107,6 +107,18 @@ namespace ComputerPlaysFactorio {
         RegisterEvent("Info", [](const json &j) {
             Info("Lua API: {}", j["data"].get<std::string>());
         });
+
+        RegisterEvent("UpdateTick", [this](const json &j) {
+            m_tick = j["data"].get<int>();
+
+            while (!m_tick_notifiers.empty()) {
+                auto &notifier = m_tick_notifiers.top();
+                if (notifier.first > m_tick) break;
+
+                notifier.second->set_value();
+                m_tick_notifiers.pop();
+            }
+        });
     }
 
     FactorioInstance::~FactorioInstance() {
@@ -139,7 +151,8 @@ namespace ComputerPlaysFactorio {
         std::vector<const char*> argv = {
             factorio_path_quote.c_str(),
             "--config", config_path_quote.c_str(),
-            "--map-gen-seed", seed_str.c_str()
+            "--map-gen-seed", seed_str.c_str(),
+            "--enable-unsafe-lua-debug-api"
         };
 
         auto port_str = std::to_string(m_rcon_port);
@@ -168,7 +181,7 @@ namespace ComputerPlaysFactorio {
         // According to cppreference the set_terminate should propagate to all threads,
         // even if the thread created afterwards, but it seems MSVC does not follow the cpp standard...
         auto terminate = std::get_terminate();
-        m_out_listener = std::thread(&FactorioInstance::OutListener, this, terminate);
+        m_out_listener = std::jthread(&FactorioInstance::OutListener, this, terminate);
         m_out_listener.detach();
 
         return SUCCESS;
@@ -311,6 +324,19 @@ namespace ComputerPlaysFactorio {
         }
 
         if (m_out_listener.joinable()) m_out_listener.join();
+    }
+
+    int FactorioInstance::GetTick() {
+        if (Running()) return m_tick;
+        return 0;
+    }
+
+    std::future<void> FactorioInstance::NotifyIn(int tick) {
+        auto promise = std::make_shared<std::promise<void>>();
+        auto future = promise->get_future();
+
+        m_tick_notifiers.emplace(m_tick + tick, std::move(promise));
+        return future;
     }
     
     int FactorioInstance::ReadStdout(char *buffer, int size) {
@@ -584,37 +610,11 @@ namespace ComputerPlaysFactorio {
         return promise->get_future();
     }
 
-    void FactorioInstance::RequestPrivate(const std::string &name, const json *data, std::function<void(const json&)> callback) {
-        json j;
-        auto id = s_id++;
-        j["id"] = id;
-        j["name"] = name;
-        if (data) j["data"] = *data;
-
-        if (SendRCON("/request " + j.dump()) != SUCCESS) {
-            callback(json{
-                {"id", id},
-                {"success", false},
-                {"error", RequestError::FACTORIO_NOT_RUNNING}
-            });
-        } else {
-            m_pending_requests[id] = callback;
-        }
-    }
-
     std::future<json> FactorioInstance::Request(const std::string &name) {
         return RequestPrivate(name, nullptr);
     }
 
     std::future<json> FactorioInstance::Request(const std::string &name, const json &data) {
         return RequestPrivate(name, &data);
-    }
-
-    void FactorioInstance::Request(const std::string &name, std::function<void(const json&)> callback) {
-        RequestPrivate(name, nullptr, callback);
-    }
-
-    void FactorioInstance::Request(const std::string &name, const json &data, std::function<void(const json&)> callback) {
-        RequestPrivate(name, &data, callback);
     }
 }

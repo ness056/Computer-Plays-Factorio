@@ -8,6 +8,10 @@ local Json = require("json")
 ---@type table<string, RequestHandler>
 local request_handlers = {}
 
+function ErrorHandler(err)
+    API.Throw(err);
+end
+
 ---@param request_name string | string[]
 ---@param handler RequestHandler
 function API.AddRequestHandler(request_name, handler)
@@ -30,7 +34,10 @@ end
 ---@param request_name string
 ---@return RequestHandler
 function API.GetRequestHandler(request_name)
-    return assert(request_name and request_handlers[request_name], "No handler for the request name " .. (request_name and request_name or "nil") .. " has been registered")
+    if not request_handlers[request_name] then
+        error("No handler for the request name " .. (request_name and request_name or "nil") .. " has been registered")
+    end
+    return request_handlers[request_name]
 end
 
 ---@enum RequestError
@@ -111,7 +118,7 @@ commands.add_command("request", nil, function (data)
         if type(d) ~= "table" then error("Invalid json: " .. data.parameter) end
 
         API.GetRequestHandler(d.name)(d)
-    end, API.ErrorHandler)
+    end, ErrorHandler)
 end)
 
 ---@param name string
@@ -143,13 +150,39 @@ function API.Info(message)
 end
 
 ---Throws an exception in the cpp side
----@param message string
+---@param message string?
 function API.Throw(message)
-    API.InvokeEvent("Throw", debug.traceback(message))
-end
+    if not message then
+        message = "Empty message"
+    end
 
-function API.ErrorHandler(err)
-    API.Throw(err);
+    ---@diagnostic disable-next-line deprecated
+    if debug.getlocal then
+        local level = 1
+        while true do
+            local info = debug.getinfo(level, "Sln")
+            if not info then break end
+            if info.what == "C" then
+                message = message .. string.format("\n    [C]: in function '%s'", info.name)
+            else
+                message = message .. string.format("\n    [%s]:%d", info.short_src, info.currentline)
+            end
+
+            local i = 1
+            while true do
+                ---@diagnostic disable-next-line deprecated
+                local name, value = debug.getlocal(level, i)
+                if not name then break end
+                message = message .. string.format("\n        [%s]: ", name) .. serpent.line(value, { nocode = true })
+                i = i + 1
+            end
+            level = level + 1
+        end
+    else
+        message = debug.traceback(message)
+    end
+
+    API.InvokeEvent("Throw", message)
 end
 
 return API

@@ -1,6 +1,7 @@
 require("__computer-plays-factorio__.freeplay")
 require("__computer-plays-factorio__.utils")
 require("__computer-plays-factorio__.instruction")
+require("__computer-plays-factorio__.requests.player")
 require("__computer-plays-factorio__.requests.walk")
 require("__computer-plays-factorio__.requests.craft")
 require("__computer-plays-factorio__.requests.entity")
@@ -11,19 +12,14 @@ local API = require("__computer-plays-factorio__.api")
 
 Event.OnEvent(defines.events.on_tick, function (event)
     if game.tick == 1 then
-        game.get_player(1).insert({name="stone-furnace", count=700})
-        game.get_player(1).insert({name="transport-belt", count=902})
-        game.get_player(1).insert({name="inserter", count=500})
-        game.get_player(1).insert({name="steel-furnace", count=250})
-        game.get_player(1).insert({name="small-electric-pole", count=250})
-        game.get_player(1).insert({name="fast-inserter", count=250})
-        game.get_player(1).insert({name="assembling-machine-1", count=250})
-        game.get_player(1).insert({name="iron-chest", count=250})
-        game.get_player(1).insert({name="long-handed-inserter", count=250})
-        game.get_player(1).insert({name="underground-belt", count=250})
-        game.get_player(1).insert({name="splitter", count=250})
-        game.get_player(1).insert({name="roboport", count=10})
-        game.get_player(1).insert({name="burner-mining-drill", count=100})
         API.InvokeEvent("Ready")
+    end
+end)
+
+---@param event EventData.script_raised_built
+Event.OnEvent(defines.events.script_raised_built, function (event)
+    local inventory = event.entity.get_inventory(defines.inventory.fuel)
+    if inventory then
+        inventory.insert("coal")
     end
 end)

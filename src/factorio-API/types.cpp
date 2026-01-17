@@ -1,23 +1,22 @@
-#include "prototypes.hpp"
+#include "../factorio-API/prototypes.hpp"
 #include "types.hpp"
 
 namespace ComputerPlaysFactorio {
 
-    void ForEachCardinal(std::function<void(Direction)> func) {
-        func(Direction::NORTH);
-        func(Direction::EAST);
-        func(Direction::SOUTH);
-        func(Direction::WEST);
-    }
+    std::future<void> Entity::FetchProperties() {
+        if (IsAbstract()) throw RuntimeErrorF("Cannot use FetchProperties method on not abstract entities.");
+        
+        auto properties = m_instance->Request("FetchEntityProperties", {{ "entity", m_name }, { "position", m_position }});
 
-    void ForEachDiagonal(std::function<void(Direction)> func) {
-        func(Direction::NORTH_EAST);
-        func(Direction::SOUTH_EAST);
-        func(Direction::SOUTH_WEST);
-        func(Direction::NORTH_WEST);
+        return std::async(std::launch::deferred, [this, properties = std::move(properties)] mutable {
+            properties.wait();
+            auto j = properties.get();
+            from_json(j["data"], *this);
+        });
     }
 
     void Entity::SetName(const std::string &name) {
+        CheckAbstract();
         m_name = name;
         if (m_type.empty()) {
             m_prototype = &g_prototypes.GetEntity(m_name);
@@ -25,6 +24,14 @@ namespace ComputerPlaysFactorio {
         }
         else m_prototype = &g_prototypes.Get(m_type, m_name);
         UpdateBoundingBox();
+    }
+
+    const double Entity::GetReach() const {
+        if (m_type == "simple-entity" || m_type == "tree" || m_type == "resource") {
+            return g_prototypes.Get("character", "character")["reach_resource_distance"];
+        } else {
+            return g_prototypes.Get("character", "character")["reach_distance"];
+        }
     }
 
     void to_json(json &j, const Entity &e) {
@@ -38,6 +45,11 @@ namespace ComputerPlaysFactorio {
         j["input_priority"] = e.m_input_priority;
         j["output_priority"] = e.m_output_priority;
         j["resource_amount"] = e.m_resource_amount;
+        j["inventories"] = json::object();
+        for (const auto &[type, inventory] : e.m_inventories) {
+            j["inventories"][Inventory::TypeToString(type)] = inventory;
+        }
+        j["crafting_progress"] = e.m_crafting_progress;
     }
 
     void from_json(const json &j, Entity &e) {
@@ -52,6 +64,14 @@ namespace ComputerPlaysFactorio {
         e.m_input_priority = !j.is_null() ? j.value("input_priority", default_.m_input_priority) : default_.m_input_priority;
         e.m_output_priority = !j.is_null() ? j.value("output_priority", default_.m_output_priority) : default_.m_output_priority;
         e.m_resource_amount = !j.is_null() ? j.value("resource_amount", default_.m_resource_amount) : default_.m_resource_amount;
+        e.m_inventories.clear();
+        if (!j.is_null() && j.contains("inventories")) {
+            const auto &inventories = j.at("inventories");
+            for (const auto &[type, inventory] : inventories.items()) {
+                e.m_inventories[Inventory::StringToType(type)] = inventory.get<Inventory>();
+            }
+        }
+        e.m_crafting_progress = !j.is_null() ? j.value("crafting_progress", default_.m_crafting_progress) : default_.m_crafting_progress;
 
         if (e.m_type.empty()) {
             e.m_prototype = &g_prototypes.GetEntity(e.m_name);
@@ -59,165 +79,6 @@ namespace ComputerPlaysFactorio {
         }
         else e.m_prototype = &g_prototypes.Get(e.m_type, e.m_name);
         e.UpdateBoundingBox();
-    }
-
-    void to_json(json &j, const MapPosition &pos) {
-        j["x"] = pos.x;
-        j["y"] = pos.y;
-    }
-
-    void from_json(const json &j, MapPosition &pos) {
-        if (j.contains("x")) {
-            pos.x = j.at("x").get<double>();
-        } else {
-            pos.x = j.at(0).get<double>();
-        }
-
-        if (j.contains("y")) {
-            pos.y = j.at("y").get<double>();
-        } else {
-            pos.y = j.at(1).get<double>();
-        }
-    }
-
-    void to_json(json &j, const Area &area) {
-        j["left_top"] = area.left_top;
-        j["right_bottom"] = area.right_bottom;
-    }
-    
-    void from_json(const json &j, Area &area) {
-        if (j.contains("left_top")) {
-            area.left_top = j.at("left_top").get<MapPosition>();
-        } else {
-            area.left_top = j.at(0).get<MapPosition>();
-        }
-
-        if (j.contains("right_bottom")) {
-            area.right_bottom = j.at("right_bottom").get<MapPosition>();
-        } else {
-            area.right_bottom = j.at(1).get<MapPosition>();
-        }
-    }
-
-    void IterateFromClosestPointCircle(
-        const MapPosition &attraction_point,
-        bool half_intergers,
-        const MapPosition &center,
-        double radius,
-        std::function<bool(const MapPosition&)> callback,
-        std::function<void()> finally
-    ) {
-        const double sq_radius = radius * radius;
-        const double d = half_intergers ? 0.5 : 1.;
-
-        const auto comp2 = [&attraction_point](const MapPosition &lhs, const MapPosition &rhs) {
-            return MapPosition::SqDistance(attraction_point, lhs) > MapPosition::SqDistance(attraction_point, rhs);
-        };
-        std::priority_queue<MapPosition, std::vector<MapPosition>, decltype(comp2)> points(comp2);
-        std::unordered_set<MapPosition> visited;
-
-        MapPosition pos = attraction_point;
-        if (MapPosition::SqDistance(pos, center) > sq_radius) {
-            double angle = (pos - center).Angle();
-            pos.x = center.x + radius * std::cos(angle);
-            pos.y = center.y + radius * std::sin(angle);
-        }
-        if (half_intergers) pos = pos.HalfRound();
-        else pos = pos.Round();
-
-        if (MapPosition::SqDistance(pos, center) <= sq_radius && callback(pos)) return;
-        while (true) {
-            for (double dx = -d; dx <= d; dx += d) {
-                for (double dy = -d; dy <= d; dy += d) {
-                    if (dx == 0 && dy == 0) continue;
-                    MapPosition neighbor = pos + MapPosition(dx, dy);
-                    if (
-                        !visited.contains(neighbor) &&
-                        MapPosition::SqDistance(neighbor, center) <= sq_radius
-                    ) {
-                        visited.emplace(neighbor);
-                        points.emplace(neighbor);
-                    }
-                }
-            }
-
-            if (points.empty()) break;
-            pos = points.top();
-            points.pop();
-            
-            if (callback(pos)) return;
-        };
-
-        if (finally) finally();
-    }
-
-    void IterateFromClosestPointArea(
-        const MapPosition &attraction_point,
-        const MapPosition &step_vector,
-        const Area &area,
-        std::function<bool(const MapPosition&)> callback,
-        std::function<void()> finally
-    ) {
-        assert(step_vector.HalfRound() == step_vector);
-
-        bool half_intergers = step_vector.Round() != step_vector;
-        std::array<MapPosition, 4> vectors = {
-            step_vector,
-            step_vector.Rotate(Direction::EAST),
-            step_vector.Rotate(Direction::SOUTH),
-            step_vector.Rotate(Direction::WEST),
-        };
-
-        const auto comp2 = [&attraction_point](const MapPosition &lhs, const MapPosition &rhs) {
-            return MapPosition::SqDistance(attraction_point, lhs) > MapPosition::SqDistance(attraction_point, rhs);
-        };
-        std::priority_queue<MapPosition, std::vector<MapPosition>, decltype(comp2)> points(comp2);
-        std::unordered_set<MapPosition> visited;
-
-        MapPosition pos = attraction_point;
-        if (!area.Collides(pos)) {
-            const MapPosition center = area.Center();
-            const Direction direction = CardinalDirection((pos - center).ToDirection());
-
-            if (direction == Direction::NORTH) {
-                auto p = MapPosition::IntersectionPoint(center, pos, area.left_top, area.GetRightTop());
-                if (!p) throw RuntimeErrorF("No intersection point found.");
-                pos = *p;
-            } else if (direction == Direction::EAST) {
-                auto p = MapPosition::IntersectionPoint(center, pos, area.right_bottom, area.GetRightTop());
-                if (!p) throw RuntimeErrorF("No intersection point found.");
-                pos = *p;
-            } else if (direction == Direction::SOUTH) {
-                auto p = MapPosition::IntersectionPoint(center, pos, area.right_bottom, area.GetLeftBottom());
-                if (!p) throw RuntimeErrorF("No intersection point found.");
-                pos = *p;
-            } else {    // West
-                auto p = MapPosition::IntersectionPoint(center, pos, area.left_top, area.GetLeftBottom());
-                if (!p) throw RuntimeErrorF("No intersection point found.");
-                pos = *p;
-            }
-        }
-        if (half_intergers) pos = pos.HalfRound();
-        else pos = pos.Round();
-
-        if (area.Collides(pos) && callback(pos)) return;
-        while (true) {
-            for (const auto &vec : vectors) {
-                MapPosition neighbor = pos + vec;
-                if (!visited.contains(neighbor) && area.Collides(neighbor)) {
-                    visited.emplace(neighbor);
-                    points.emplace(neighbor);
-                }
-            }
-
-            if (points.empty()) break;
-            pos = points.top();
-            points.pop();
-            
-            if (callback(pos)) return;
-        };
-
-        if (finally) finally();
     }
 
     void Blueprint::Shift(const MapPosition &vector) {
